@@ -1,0 +1,36 @@
+{
+  "name": "detective-script-dev",
+  "version": "1.0.0",
+  "description": "Detective fiction skill package: deterministic artifact protocol + core trick lock + multi-agent review",
+  "main": "ops/skills/detective-script-dev/SKILL.md",
+  "bin": {
+    "wolf-runner": "src/bin/wolf-runner.js"
+  },
+  "scripts": {
+    "check": "node --check src/bin/wolf-runner.js && node --check src/adapters/fanqie/fanqie-cli.js && node --check ops/skills/detective-script-dev/scripts/wolf-runner.js && node --check ops/skills/detective-script-dev/scripts/fanqie-cli.js",
+    "case:init": "node src/bin/wolf-runner.js case init",
+    "case:check": "node src/bin/wolf-runner.js case check",
+    "case:list": "node src/bin/wolf-runner.js case list",
+    "fanqie": "node src/adapters/fanqie/fanqie-cli.js",
+    "acceptance": "node ops/skills/detective-script-dev/scripts/acceptance-check.js",
+    "test": "npm run check && node src/bin/wolf-runner.js case list && node src/bin/wolf-runner.js case check HYOUKA-GZ"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/2000thboy/detective-script-dev-skill.git"
+  },
+  "keywords": [
+    "fanqie",
+    "workflow",
+    "automation",
+    "codex",
+    "workbuddy"
+  ],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/2000thboy/detective-script-dev-skill/issues"
+  },
+  "homepage": "https://github.com/2000thboy/detective-script-dev-skill#readme"
+}

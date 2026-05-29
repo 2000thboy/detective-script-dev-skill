@@ -1,0 +1,29 @@
+{
+  "project_name": "detective-script-dev",
+  "project_version": "1.0.0",
+  "current_goal": "维护一个可安装、可验收的 detective-script-dev skill 包，提供 case runner、核心诡计锁、多 agent review schema 和 Fanqie live gate。",
+  "stage": "packaged_skill",
+  "progress": 100,
+  "progress_bar": "[████████████████████] 100%",
+  "total_tasks": 7,
+  "completed_tasks": 7,
+  "next_tasks": [
+    "按需新增真实 case",
+    "按需扩展 review/editor schema",
+    "Fanqie live action 继续保持人工确认"
+  ],
+  "priority": "high",
+  "tags": [
+    "detective-script-dev",
+    "skill-package",
+    "core-trick-lock",
+    "multi-case-acceptance",
+    "fanqie-live-gate"
+  ],
+  "blockers": [],
+  "notes": "迁移残留已删除。当前仓库只保留产品化 skill、runner、Fanqie adapter、HYOUKA-GZ 回归案例和必要事实文档。",
+  "milestone": "runnable skill package",
+  "last_updated": "2026-05-29T22:30:00+08:00",
+  "owner": "hy11",
+  "project_type": "skill-workflow-cli"
+}

@@ -1,0 +1,18 @@
+frontend/node_modules/
+frontend/dist/
+node_modules/
+.pytest_cache/
+**/__pycache__/
+.codex-tmp/
+.claude/tools/tests/tmp/
+frontend/node_modules/.bin/.*-*/
+.claude/configs/
+.omc/state/
+.env
+.env.local
+data/
+artifacts/
+
+# External projects (accidentally committed)
+Documents/
+Downloads/

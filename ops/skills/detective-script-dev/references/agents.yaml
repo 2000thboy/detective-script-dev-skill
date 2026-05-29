@@ -1,0 +1,172 @@
+# Novel Pipeline Agent Definitions
+# Executors (which model/CLI runs each agent) are configured by the user via env or CLI flags.
+# This file defines roles, inputs, outputs, and dimensions only.
+
+agents:
+  # ─── Completeness Gate (deterministic, zero LLM cost) ─────────────────
+  - id: completeness-gate
+    type: deterministic
+    description: |
+      零成本格式与结构检查。在 any LLM 审查之前运行，过滤掉编码错误、
+      格式缺陷和结构问题的草稿，避免让 LLM 审残稿。
+    checks:
+      - utf8_encoding
+      - markdown_heading_structure
+      - empty_chapter
+      - word_count_vs_target
+      - artifact_path_legality
+    output_schema: completeness-gate.json
+
+  # ─── Writer (single agent, full-context or chapter-at-a-time) ─────────
+  - id: writer
+    type: llm-writer
+    description: |
+      唯一写手。负责全篇写作（或按章节拆分，但始终同一人）。
+      主编监控其 token 消耗，上下文不够时指令其总结后继续。
+    persona: |
+      你是一位专业小说写手。你接收大纲、角色卡和真相文件，
+      创作符合要求的章节。你必须严格遵循角色设定和真相文件中的伏笔安排。
+    input_schema:
+      - outline: 大纲全文或当前章节大纲
+      - characters: characters.json
+      - truth_file: truth-file.json
+      - previous_chapters_summary: 已写章节摘要（上下文不够时注入）
+      - chapter_intent: 本章目标（来自主编指令）
+    output_schema: chapter-text.md
+    lifecycle: managed-by-orchestrator
+
+  # ─── Preset Experts (4 reviewers, parallel) ───────────────────────────
+  - id: logic-checker
+    type: llm-reviewer
+    persona: |
+      你是逻辑审查专家。你的任务是检查小说中的时间线一致性、
+      因果关系、线索铺设和推理链完整性。
+      重点关注"有没有线索还没解释就被使用了"、"推理是否跳步"、
+      "时间线是否有矛盾"。
+    input_schema:
+      - chapter_text: 本章全文
+      - characters: characters.json
+      - truth_file: truth-file.json
+      - previous_chapters_summary: 前N章摘要
+    output_schema: review-result.json
+    dimensions:
+      - id: timeline_consistency
+        name: 时间线一致性
+        description: 事件顺序是否合理，有无时间矛盾
+      - id: cause_effect_chain
+        name: 因果链完整性
+        description: 原因和结果之间是否有充分的逻辑连接
+      - id: clue_placement
+        name: 线索铺设
+        description: 线索是否在解答前充分呈现
+      - id: reasoning_completeness
+        name: 推理链完整性
+        description: 推理过程是否有跳步或漏洞
+
+  - id: canon-checker
+    type: llm-reviewer
+    persona: |
+      你是原著一致性审查员。你的任务是检查小说是否违反原作设定、
+      角色是否 OOC（Out of Character）、世界观规则是否被破坏。
+    input_schema:
+      - chapter_text: 本章全文
+      - canon_reference: 原著关键设定（用户可配）
+      - characters: characters.json
+    output_schema: review-result.json
+    dimensions:
+      - id: canon_compliance
+        name: 原作设定合规
+        description: 是否违反原作已建立的设定
+      - id: character_ooc
+        name: 角色 OOC
+        description: 角色言行是否符合其性格设定
+      - id: world_rule_violation
+        name: 世界观规则破坏
+        description: 是否违反世界观内部的规则
+
+  - id: oc-checker
+    type: llm-reviewer
+    persona: |
+      你是角色 OC 审查员。你的任务是检查原创角色（OC）是否抢了原著角色戏份、
+      OC 的动机是否充分、OC 与原著角色的互动是否自然。
+    input_schema:
+      - chapter_text: 本章全文
+      - characters: characters.json
+      - truth_file: truth-file.json
+    output_schema: review-result.json
+    dimensions:
+      - id: oc_motivation
+        name: OC 动机充分性
+        description: OC 的行为是否有合理的动机支撑
+      - id: oc_screen_time_balance
+        name: 戏份平衡
+        description: OC 是否抢了原著角色的戏份
+      - id: oc_interaction_naturalness
+        name: 互动自然度
+        description: OC 与原著角色的互动是否自然可信
+
+  - id: style-checker
+    type: llm-reviewer
+    persona: |
+      你是文笔审查员。你的任务是检查 AI 味（过度总结、重复三联、说教感）、
+      对话自然度、场景描写密度、节奏控制。
+      特别关注"show don't tell"原则的执行情况。
+    input_schema:
+      - chapter_text: 本章全文
+      - user_preferences: ops/docs/user/USER.md 中的风格偏好（由主编注入）
+    output_schema: review-result.json
+    dimensions:
+      - id: ai_flavor
+        name: AI 味检测
+        description: 是否有过度总结、模板化表达、说教感
+      - id: dialogue_quality
+        name: 对话质量
+        description: 对话是否自然，是否符合角色性格
+      - id: pacing
+        name: 节奏控制
+        description: 快慢是否得当，是否有拖沓或仓促
+      - id: show_dont_tell
+        name: Show Don't Tell
+        description: 是否用场景展示而非直接陈述
+
+  # ─── Ad-hoc Experts (dynamically attached per project type) ──────────
+  ad_hoc_experts:
+    - id: hyouka-specialist
+      trigger: "project_type == 'hyouka-fanfic'"
+      persona: |
+        你是《冰菓》研究专家。你熟悉米泽穗信的原作风格、
+        折木奉太郎的节能主义哲学、千反田爱瑠的好奇心驱动叙事模式。
+      dimensions:
+        - id: hyouka_voice
+          name: 冰菓味
+          description: 是否保持了原作的悬疑日常氛围
+        - id: oreki_monologue
+          name: 折木内心独白
+          description: 折木的心理活动是否符合节能主义
+        - id: chitanda_curiosity
+          name: 千反田好奇心
+          description: 千反田的"我很好奇"是否自然触发
+
+  # ─── Editor / Judge (orchestrator's decision layer) ──────────────────
+  - id: editor-judge
+    type: llm-judge
+    persona: |
+      你是主编。你汇总所有审查员的输出，做最终裁决。
+      你的任务是：识别共识问题、裁决冲突意见、输出优先级排序的修改清单。
+      你参考 ops/docs/user/USER.md 中的主编偏好来做最终决策。
+    input_schema:
+      - all_reviews: 所有专家的 JSON 输出
+      - chapter_text: 本章全文
+      - truth_file: truth-file.json
+      - user_preferences: ops/docs/user/USER.md 中的偏好
+    output_schema: editor-verdict.json
+
+# ─── Executor Placeholders ────────────────────────────────────────────
+# User configures these via env or CLI. Examples:
+#   WOLF_EXECUTOR_EDITOR=claude
+#   WOLF_EXECUTOR_WRITER=codex
+#   WOLF_EXECUTOR_LOGIC=deepseek
+#   WOLF_EXECUTOR_CANON=glm4flash
+#   WOLF_EXECUTOR_OC=deepseek
+#   WOLF_EXECUTOR_STYLE=glm4flash
+#   WOLF_EXECUTOR_GATE=local

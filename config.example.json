@@ -1,0 +1,43 @@
+{
+  "runner": {
+    "host": "local",
+    "timezone": "Asia/Shanghai",
+    "workflow": "nested-wolf",
+    "mode": "dry-run",
+    "interaction_mode_default": "ask",
+    "require_live_confirm": true,
+    "output_root": "cases"
+  },
+  "nested_wolf": {
+    "default_case_root": "cases",
+    "default_delivery_format": "markdown",
+    "review_strategy": "parallel-review",
+    "human_gates": [
+      "brief-approval",
+      "outline-approval",
+      "draft-version-approval",
+      "publish-approval"
+    ],
+    "executor_config": "local-only"
+  },
+  "fanqie": {
+    "enabled": false,
+    "workspace": "fanqie",
+    "default_genre": "悬疑灵异",
+    "default_gender": "男频",
+    "book_id": "",
+    "volume_id": "",
+    "book_strategy": "existing-book-pool",
+    "create_book_mode": "manual-confirmed-maintenance",
+    "max_long_form_book_slots_per_month": 3,
+    "quota_policy": {
+      "on_create_limit": "DEFERRED",
+      "on_update_limit": "DEFERRED",
+      "on_word_limit": "DEFERRED"
+    }
+  },
+  "evidence": {
+    "reports": ".plan/archive/2026-05",
+    "audit_log": "data/runs/audit.jsonl"
+  }
+}

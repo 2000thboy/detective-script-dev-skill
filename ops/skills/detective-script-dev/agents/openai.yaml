@@ -1,0 +1,3 @@
+display_name: detective-script-dev
+short_description: Detective fiction pipeline with fixed case artifacts, core trick locking, and editor-led review.
+default_prompt: Use detective-script-dev to guide a detective fiction case from brief through locked core trick, drafting, review, and publish preparation.
