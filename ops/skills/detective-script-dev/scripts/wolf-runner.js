@@ -9,8 +9,9 @@ const path = require("path");
 const crypto = require("crypto");
 
 const CWD = process.cwd();
-const CASES_DIR = path.join(CWD, "content", "cases");
-const MAX_ROLLBACKS = 3;
+const CONFIG = loadWolfConfig();
+const CASES_DIR = path.resolve(CWD, CONFIG.caseRoot || path.join("content", "cases"));
+const MAX_ROLLBACKS = Number(CONFIG.maxRollbacks || 3);
 const VALID_CASE_STATUSES = new Set(["active", "delivered", "blocked", "fused", "archived"]);
 const NODE_COMMANDS = new Map([
   ["brief-lock", { node: "brief", phase: "brief", gate: "trick-lock" }],
@@ -23,11 +24,15 @@ const NODE_COMMANDS = new Map([
 
 function usage() {
   console.log(`
-Usage: wolf-runner <command> [options]
+Usage: wolf <command> [options]
 
 Commands:
   case init <case-name>          Initialize a new case with artifact protocol
   case check <case-name>         Validate case artifacts against protocol
+  case fair-check <case-name>    Check whether key clues appear before reveal
+                                  Options: [--version vN] [--draft PATH] [--truth PATH] [--json]
+  case score <case-name>         Write a 0-100 quality score report
+                                  Options: [--version vN] [--json]
   case status <case-name>        Print state, manifest, and detected versions
   case rollback <case-name>      Record rollback to a prior version
                                   Options: --to vN [--reason TEXT] [--owner NAME]
@@ -53,10 +58,24 @@ Commands:
   case unlock <case-name>        Release a case write lease
                                   Options: --owner NAME
   case list                      List all cases
+  publish prep <case-name>       Generate manual publish package
+                                  Options: [--platform fanqie] [--version vN]
+  publish checklist <case-name>  Print manual publish checklist path
+                                  Options: [--platform fanqie] [--version vN]
+  memory init                    Create static user preference memory JSON
+                                  Options: [--path PATH] [--force]
+  memory check                   Validate static user preference memory JSON
+                                  Options: [--path PATH] [--json]
+  memory show                    Print static memory summary if configured
+                                  Options: [--path PATH] [--json]
 
 Options:
   --no-write                     Do not update manifest during check
   --help, -h                     Show this help
+
+Optional config:
+  ~/.config/wolf/config.json     { "caseRoot": "content/cases", "maxRollbacks": 3 }
+  ~/.config/wolf/memory.json     Static user style and failure-pattern memory
 `);
   process.exit(0);
 }
@@ -281,6 +300,544 @@ function checkCase(caseName) {
   console.log(`\nChecks: ${report.checks.filter((c) => c.status === "PASS").length}/${report.checks.length} passed`);
 
   process.exit(report.status === "PASS" ? 0 : report.status === "WARN" ? 0 : 1);
+}
+
+// ─── Fairness Check ───────────────────────────────────────────
+
+function fairCheckCase(caseName, args) {
+  const options = parseOptions(args);
+  const caseDir = requireCaseDir(caseName);
+  const state = loadState(caseDir, caseName);
+  const version = normalizeVersion(options.version) || state.current_version || detectCaseVersions(caseDir).highest || "v1";
+  const truthPath = options.truth ? path.resolve(CWD, options.truth) : path.join(caseDir, "00-meta", "truth-file.json");
+  const draftPath = options.draft ? path.resolve(CWD, options.draft) : resolveDraftPath(caseDir, version);
+
+  if (!fs.existsSync(truthPath)) {
+    console.error(`Error: truth file not found: ${truthPath}`);
+    process.exit(1);
+  }
+  if (!draftPath || !fs.existsSync(draftPath)) {
+    console.error(`Error: draft not found for ${caseName} ${version}`);
+    process.exit(1);
+  }
+
+  const truthFile = readJson(truthPath);
+  const draft = fs.readFileSync(draftPath, "utf-8");
+  const report = buildFairnessReport(caseName, version, truthFile, draft, draftPath, truthPath);
+  const reviewDir = path.join(caseDir, "05-reviews", version);
+  fs.mkdirSync(reviewDir, { recursive: true });
+  writeJson(path.join(reviewDir, "fairness-report.json"), report);
+  fs.writeFileSync(path.join(reviewDir, "fairness-report.md"), formatFairnessMarkdown(report), "utf-8");
+  updateManifest(caseDir, {
+    lastFairnessCheck: {
+      at: report.created_at,
+      version,
+      status: report.status,
+      report: path.relative(caseDir, path.join(reviewDir, "fairness-report.json")).replace(/\\/g, "/"),
+    },
+  });
+
+  if (options.json) {
+    console.log(JSON.stringify(report, null, 2));
+  } else {
+    console.log(`Fairness: ${report.status}`);
+    console.log(`Case: ${caseName}`);
+    console.log(`Version: ${version}`);
+    console.log(`Clues: ${report.summary.pass} pass, ${report.summary.warn} warn, ${report.summary.blocked} blocked`);
+    console.log(`Report: ${path.relative(CWD, path.join(reviewDir, "fairness-report.md")).replace(/\\/g, "/")}`);
+    for (const item of report.items.filter((entry) => entry.status !== "PASS")) {
+      console.log(`  - ${item.status} ${item.id}: ${item.issue}`);
+    }
+  }
+
+  process.exit(report.status === "BLOCKED" ? 1 : 0);
+}
+
+function scoreCase(caseName, args) {
+  const options = parseOptions(args);
+  const caseDir = requireCaseDir(caseName);
+  const state = loadState(caseDir, caseName);
+  const version = normalizeVersion(options.version) || state.current_version || detectCaseVersions(caseDir).highest || "v1";
+  const truthPath = path.join(caseDir, "00-meta", "truth-file.json");
+  const draftPath = resolveDraftPath(caseDir, version);
+  if (!draftPath || !fs.existsSync(draftPath)) {
+    console.error(`Error: draft not found for ${caseName} ${version}`);
+    process.exit(1);
+  }
+  const truthFile = readJson(truthPath);
+  const draft = fs.readFileSync(draftPath, "utf-8");
+  const reviewDir = path.join(caseDir, "05-reviews", version);
+  const fairnessPath = path.join(reviewDir, "fairness-report.json");
+  const fairness = fs.existsSync(fairnessPath)
+    ? readJson(fairnessPath)
+    : buildFairnessReport(caseName, version, truthFile, draft, draftPath, truthPath);
+  const report = buildQualityReport(caseName, version, truthFile, draft, fairness, reviewDir);
+  fs.mkdirSync(reviewDir, { recursive: true });
+  writeJson(path.join(reviewDir, "quality-score.json"), report);
+  fs.writeFileSync(path.join(reviewDir, "quality-score.md"), formatQualityMarkdown(report), "utf-8");
+  updateManifest(caseDir, {
+    lastQualityScore: {
+      at: report.created_at,
+      version,
+      score: report.score,
+      verdict: report.verdict,
+      report: path.relative(caseDir, path.join(reviewDir, "quality-score.json")).replace(/\\/g, "/"),
+    },
+  });
+  if (options.json) {
+    console.log(JSON.stringify(report, null, 2));
+  } else {
+    console.log(`Quality score: ${report.score}/100`);
+    console.log(`Verdict: ${report.verdict}`);
+    console.log(`Report: ${path.relative(CWD, path.join(reviewDir, "quality-score.md")).replace(/\\/g, "/")}`);
+  }
+  process.exit(report.verdict === "blocked" ? 1 : 0);
+}
+
+function buildFairnessReport(caseName, version, truthFile, draft, draftPath, truthPath) {
+  const clues = normalizeClues(truthFile);
+  const revealIndex = detectRevealIndex(draft, truthFile);
+  const items = clues.map((clue) => evaluateClueFairness(clue, draft, revealIndex));
+  const summary = {
+    pass: items.filter((item) => item.status === "PASS").length,
+    warn: items.filter((item) => item.status === "WARN").length,
+    blocked: items.filter((item) => item.status === "BLOCKED").length,
+  };
+  const status = summary.blocked > 0 ? "BLOCKED" : summary.warn > 0 ? "WARN" : "PASS";
+  return {
+    case: caseName,
+    version,
+    status,
+    created_at: new Date().toISOString(),
+    draft: path.relative(CWD, draftPath).replace(/\\/g, "/"),
+    truth_file: path.relative(CWD, truthPath).replace(/\\/g, "/"),
+    reveal_index: revealIndex,
+    summary,
+    items,
+  };
+}
+
+function normalizeClues(truthFile) {
+  const rawClues = Array.isArray(truthFile.clues) ? truthFile.clues : [];
+  return rawClues.map((clue, index) => {
+    const aliases = Array.isArray(clue.aliases) ? clue.aliases : [];
+    const terms = [
+      clue.claim,
+      clue.description,
+      clue.significance,
+      clue.text,
+      clue.name,
+      ...aliases,
+    ]
+      .filter((term) => typeof term === "string")
+      .flatMap((term) => splitSearchTerms(term))
+      .filter((term) => term.length >= 2);
+    return {
+      id: clue.id || `clue-${index + 1}`,
+      claim: clue.claim || clue.description || clue.name || "",
+      expected_before_reveal: clue.expected_before_reveal !== false,
+      terms: unique(terms),
+    };
+  });
+}
+
+function splitSearchTerms(text) {
+  const normalized = text.replace(/[，。、“”‘’：:；;（）()[\]{}]/g, " ");
+  const parts = normalized.split(/\s+/).map((part) => part.trim()).filter(Boolean);
+  if (parts.length === 0) return [];
+  return [text.trim(), ...parts].filter((part) => part.length <= 40);
+}
+
+function evaluateClueFairness(clue, draft, revealIndex) {
+  if (!clue.expected_before_reveal) {
+    return {
+      id: clue.id,
+      status: "PASS",
+      issue: "not required before reveal",
+      first_occurrence: null,
+      matched_term: null,
+      occurrences_before_reveal: 0,
+    };
+  }
+  if (clue.terms.length === 0) {
+    return {
+      id: clue.id,
+      status: "WARN",
+      issue: "clue has no searchable claim, description, name, or aliases",
+      first_occurrence: null,
+      matched_term: null,
+      occurrences_before_reveal: 0,
+    };
+  }
+
+  const matches = findTermMatches(draft, clue.terms);
+  const beforeReveal = matches.filter((match) => match.index < revealIndex);
+  if (matches.length === 0) {
+    return {
+      id: clue.id,
+      status: "BLOCKED",
+      issue: "key clue is not present in draft",
+      first_occurrence: null,
+      matched_term: null,
+      occurrences_before_reveal: 0,
+    };
+  }
+  if (beforeReveal.length === 0) {
+    return {
+      id: clue.id,
+      status: "BLOCKED",
+      issue: "key clue first appears at or after reveal",
+      first_occurrence: matches[0].index,
+      matched_term: matches[0].term,
+      occurrences_before_reveal: 0,
+    };
+  }
+  if (beforeReveal.length === 1 && beforeReveal[0].term.length <= 2) {
+    return {
+      id: clue.id,
+      status: "WARN",
+      issue: "clue appears before reveal, but only through a very weak term",
+      first_occurrence: beforeReveal[0].index,
+      matched_term: beforeReveal[0].term,
+      occurrences_before_reveal: beforeReveal.length,
+    };
+  }
+  return {
+    id: clue.id,
+    status: "PASS",
+    issue: "",
+    first_occurrence: beforeReveal[0].index,
+    matched_term: beforeReveal[0].term,
+    occurrences_before_reveal: beforeReveal.length,
+  };
+}
+
+function findTermMatches(text, terms) {
+  const matches = [];
+  for (const term of terms) {
+    let start = 0;
+    while (start < text.length) {
+      const index = text.indexOf(term, start);
+      if (index === -1) break;
+      matches.push({ term, index });
+      start = index + Math.max(term.length, 1);
+    }
+  }
+  return matches.sort((a, b) => a.index - b.index);
+}
+
+function detectRevealIndex(draft, truthFile) {
+  const markers = ["## 解谜", "## 真相", "## 揭示", "## 解决篇", "## 终章", "真相是", "最终解释", "canonical solution"];
+  const markerIndexes = markers.map((marker) => draft.indexOf(marker)).filter((index) => index >= 0);
+  if (markerIndexes.length > 0) return Math.min(...markerIndexes);
+
+  const coreSolution = truthFile.core_trick && truthFile.core_trick.canonical_solution;
+  if (typeof coreSolution === "string" && coreSolution.trim()) {
+    const solutionTerms = splitSearchTerms(coreSolution).filter((term) => term.length >= 4);
+    const solutionMatch = findTermMatches(draft, solutionTerms)[0];
+    if (solutionMatch) return solutionMatch.index;
+  }
+
+  return Math.floor(draft.length * 0.75);
+}
+
+function resolveDraftPath(caseDir, version) {
+  const candidates = [
+    path.join(caseDir, "04-drafts", version, "full.md"),
+    path.join(caseDir, "04-drafts", `${version}.md`),
+    path.join(caseDir, "04-drafts", version, "chapters", "full.md"),
+    path.join(caseDir, "06-deliverables", `${version}.md`),
+    path.join(caseDir, "06-deliverables", "final.md"),
+  ];
+  return candidates.find((candidate) => fs.existsSync(candidate)) || null;
+}
+
+function formatFairnessMarkdown(report) {
+  const lines = [
+    `# Fairness Report — ${report.case} ${report.version}`,
+    "",
+    `Status: ${report.status}`,
+    `Draft: ${report.draft}`,
+    `Truth file: ${report.truth_file}`,
+    "",
+    "## Summary",
+    "",
+    `- PASS: ${report.summary.pass}`,
+    `- WARN: ${report.summary.warn}`,
+    `- BLOCKED: ${report.summary.blocked}`,
+    "",
+    "## Clues",
+    "",
+  ];
+  for (const item of report.items) {
+    lines.push(`- ${item.status} ${item.id}: ${item.issue || "fairly planted before reveal"}`);
+    if (item.matched_term) lines.push(`  - matched: ${item.matched_term}`);
+    if (item.first_occurrence !== null) lines.push(`  - first_occurrence: ${item.first_occurrence}`);
+  }
+  return `${lines.join("\n")}\n`;
+}
+
+function unique(items) {
+  return [...new Set(items)];
+}
+
+function buildQualityReport(caseName, version, truthFile, draft, fairness, reviewDir) {
+  const dimensions = [
+    scoreCoreTrick(truthFile),
+    scoreFairness(fairness),
+    scoreDraftCompleteness(draft),
+    scoreReviewArtifacts(reviewDir),
+    scorePublishReadiness(reviewDir),
+  ];
+  const score = Math.round(dimensions.reduce((sum, item) => sum + item.score * item.weight, 0) / dimensions.reduce((sum, item) => sum + item.weight, 0));
+  const blockers = dimensions.flatMap((item) => item.blockers.map((blocker) => `${item.name}: ${blocker}`));
+  return {
+    case: caseName,
+    version,
+    score,
+    verdict: blockers.length > 0 ? "blocked" : score >= 85 ? "pass" : score >= 70 ? "warn" : "blocked",
+    created_at: new Date().toISOString(),
+    dimensions,
+    blockers,
+  };
+}
+
+function scoreCoreTrick(truthFile) {
+  const coreTrick = truthFile.core_trick || {};
+  const blockers = [];
+  let score = 100;
+  if (coreTrick.locked !== true) {
+    blockers.push("core_trick is not locked");
+    score -= 50;
+  }
+  for (const field of ["editor_explanation", "canonical_solution", "change_policy"]) {
+    if (typeof coreTrick[field] !== "string" || !coreTrick[field].trim()) score -= 10;
+  }
+  if (!Array.isArray(coreTrick.writer_constraints) || coreTrick.writer_constraints.length === 0) score -= 10;
+  return qualityDimension("core_trick", 0.25, score, blockers);
+}
+
+function scoreFairness(fairness) {
+  const blockers = [];
+  let score = 100;
+  if (!fairness || fairness.status === "BLOCKED") {
+    blockers.push("fairness check is blocked");
+    score = 30;
+  } else if (fairness.status === "WARN") {
+    score = 75;
+  }
+  if (fairness && fairness.summary) {
+    score -= Number(fairness.summary.warn || 0) * 5;
+  }
+  return qualityDimension("fairness", 0.3, score, blockers);
+}
+
+function scoreDraftCompleteness(draft) {
+  const blockers = [];
+  const length = draft.trim().length;
+  let score = 100;
+  if (length < 1000) {
+    blockers.push("draft is too short for review");
+    score = 40;
+  } else if (length < 5000) {
+    score = 75;
+  }
+  return qualityDimension("draft_completeness", 0.2, score, blockers, { characters: length });
+}
+
+function scoreReviewArtifacts(reviewDir) {
+  const hasReview = fs.existsSync(path.join(reviewDir, "review-result.json"));
+  const hasEditor = fs.existsSync(path.join(reviewDir, "editor-verdict.json"));
+  let score = 60;
+  if (hasReview) score += 20;
+  if (hasEditor) score += 20;
+  return qualityDimension("structured_review", 0.15, score, [], { has_review: hasReview, has_editor_verdict: hasEditor });
+}
+
+function scorePublishReadiness(reviewDir) {
+  const hasFairness = fs.existsSync(path.join(reviewDir, "fairness-report.json"));
+  const hasQuality = fs.existsSync(path.join(reviewDir, "quality-score.json"));
+  let score = 70;
+  if (hasFairness) score += 20;
+  if (hasQuality) score += 10;
+  return qualityDimension("publish_readiness", 0.1, score, []);
+}
+
+function qualityDimension(name, weight, score, blockers, extra = {}) {
+  return {
+    name,
+    weight,
+    score: Math.max(0, Math.min(100, Math.round(score))),
+    blockers,
+    ...extra,
+  };
+}
+
+function formatQualityMarkdown(report) {
+  const lines = [
+    `# Quality Score — ${report.case} ${report.version}`,
+    "",
+    `Score: ${report.score}/100`,
+    `Verdict: ${report.verdict}`,
+    "",
+    "## Dimensions",
+    "",
+  ];
+  for (const item of report.dimensions) {
+    lines.push(`- ${item.name}: ${item.score}/100`);
+    for (const blocker of item.blockers) lines.push(`  - blocker: ${blocker}`);
+  }
+  if (report.blockers.length > 0) {
+    lines.push("", "## Blockers", "");
+    for (const blocker of report.blockers) lines.push(`- ${blocker}`);
+  }
+  return `${lines.join("\n")}\n`;
+}
+
+function loadWolfConfig() {
+  const home = process.env.USERPROFILE || process.env.HOME;
+  if (!home) return {};
+  const configPath = path.join(home, ".config", "wolf", "config.json");
+  if (!fs.existsSync(configPath)) return {};
+  try {
+    return readJson(configPath);
+  } catch (err) {
+    console.error(`Error: invalid config at ${configPath}: ${err.message}`);
+    process.exit(1);
+  }
+}
+
+function memoryInit(args) {
+  const options = parseOptions(args);
+  const memoryPath = resolveMemoryPath(options.path);
+  if (fs.existsSync(memoryPath) && !options.force) {
+    console.error(`Error: memory file already exists: ${memoryPath}`);
+    console.error("Re-run with --force to overwrite.");
+    process.exit(1);
+  }
+  fs.mkdirSync(path.dirname(memoryPath), { recursive: true });
+  writeJson(memoryPath, defaultMemoryTemplate());
+  console.log(`Memory initialized: ${memoryPath}`);
+}
+
+function memoryCheck(args) {
+  const options = parseOptions(args);
+  const memoryPath = resolveMemoryPath(options.path);
+  if (!fs.existsSync(memoryPath)) {
+    console.error(`Error: memory file not found: ${memoryPath}`);
+    process.exit(1);
+  }
+  const memory = readJson(memoryPath);
+  const result = validateMemory(memory);
+  if (options.json) {
+    console.log(JSON.stringify({ path: memoryPath, ...result }, null, 2));
+  } else {
+    console.log(`Memory: ${result.ok ? "PASS" : "BLOCKED"}`);
+    console.log(`Path: ${memoryPath}`);
+    for (const issue of result.issues) console.log(`  - ${issue}`);
+  }
+  process.exit(result.ok ? 0 : 1);
+}
+
+function memoryShow(args) {
+  const options = parseOptions(args);
+  const memoryPath = resolveMemoryPath(options.path);
+  if (!fs.existsSync(memoryPath)) {
+    if (options.json) console.log(JSON.stringify({ configured: false, path: memoryPath }, null, 2));
+    else console.log(`Memory not configured: ${memoryPath}`);
+    return;
+  }
+  const memory = readJson(memoryPath);
+  const result = validateMemory(memory);
+  if (!result.ok) {
+    console.error(`Error: invalid memory at ${memoryPath}: ${result.issues.join(", ")}`);
+    process.exit(1);
+  }
+  const summary = memorySummary(memory, memoryPath);
+  if (options.json) {
+    console.log(JSON.stringify(summary, null, 2));
+  } else {
+    console.log(`Memory: ${summary.configured ? "configured" : "not configured"}`);
+    console.log(`Path: ${summary.path}`);
+    console.log(`Preferred style: ${summary.user_profile.preferred_style.join(", ") || "none"}`);
+    console.log(`Failure patterns: ${summary.failure_patterns_count}`);
+  }
+}
+
+function loadMemorySummary() {
+  const memoryPath = resolveMemoryPath();
+  if (!fs.existsSync(memoryPath)) {
+    return { configured: false, path: memoryPath };
+  }
+  try {
+    const memory = readJson(memoryPath);
+    const result = validateMemory(memory);
+    if (!result.ok) return { configured: false, path: memoryPath, issues: result.issues };
+    return memorySummary(memory, memoryPath);
+  } catch (err) {
+    return { configured: false, path: memoryPath, issues: [err.message] };
+  }
+}
+
+function memorySummary(memory, memoryPath) {
+  return {
+    configured: true,
+    path: memoryPath,
+    user_profile: memory.user_profile,
+    successful_cases_count: memory.successful_cases.length,
+    failure_patterns_count: memory.failure_patterns.length,
+  };
+}
+
+function resolveMemoryPath(customPath) {
+  if (customPath) return path.resolve(CWD, customPath);
+  const home = process.env.USERPROFILE || process.env.HOME;
+  if (!home) {
+    console.error("Error: cannot resolve home directory for memory path");
+    process.exit(1);
+  }
+  return path.join(home, ".config", "wolf", "memory.json");
+}
+
+function defaultMemoryTemplate() {
+  return {
+    version: "1.0",
+    user_profile: {
+      preferred_style: [],
+      preferred_pace: "",
+      preferred_trick_type: [],
+      chapter_length_target: null,
+      outline_depth: null,
+    },
+    successful_cases: [],
+    failure_patterns: [],
+    updated_at: new Date().toISOString(),
+  };
+}
+
+function validateMemory(memory) {
+  const issues = [];
+  if (!memory || typeof memory !== "object" || Array.isArray(memory)) {
+    return { ok: false, issues: ["memory root must be an object"] };
+  }
+  if (!memory.user_profile || typeof memory.user_profile !== "object" || Array.isArray(memory.user_profile)) {
+    issues.push("user_profile must be an object");
+  } else {
+    const profile = memory.user_profile;
+    for (const field of ["preferred_style", "preferred_trick_type"]) {
+      if (!Array.isArray(profile[field])) issues.push(`user_profile.${field} must be an array`);
+    }
+    if (profile.chapter_length_target !== null && profile.chapter_length_target !== undefined && typeof profile.chapter_length_target !== "number") {
+      issues.push("user_profile.chapter_length_target must be number or null");
+    }
+    if (profile.outline_depth !== null && profile.outline_depth !== undefined && typeof profile.outline_depth !== "number") {
+      issues.push("user_profile.outline_depth must be number or null");
+    }
+  }
+  for (const field of ["successful_cases", "failure_patterns"]) {
+    if (!Array.isArray(memory[field])) issues.push(`${field} must be an array`);
+  }
+  return { ok: issues.length === 0, issues };
 }
 
 // ─── Case Status / Rollback / Archive ─────────────────────────
@@ -592,6 +1149,7 @@ function briefCase(caseName) {
       change_policy: coreTrick.change_policy || "",
     },
     forbidden_changes: coreTrick.writer_constraints || [],
+    memory: loadMemorySummary(),
     next_action: nextActionForState(state),
   };
   console.log(JSON.stringify(summary, null, 2));
@@ -648,6 +1206,94 @@ function listCases() {
   for (const name of cases) {
     console.log(`  - ${name}`);
   }
+}
+
+// ─── Publish Prep ─────────────────────────────────────────────
+
+function publishPrepCase(caseName, args) {
+  const options = parseOptions(args);
+  const platform = options.platform || "fanqie";
+  const caseDir = requireCaseDir(caseName);
+  const state = loadState(caseDir, caseName);
+  const version = normalizeVersion(options.version) || state.current_version || detectCaseVersions(caseDir).highest || "v1";
+  const draftPath = resolveDraftPath(caseDir, version);
+  if (!draftPath || !fs.existsSync(draftPath)) {
+    console.error(`Error: draft not found for ${caseName} ${version}`);
+    process.exit(1);
+  }
+
+  const draft = fs.readFileSync(draftPath, "utf-8");
+  const packageDir = path.join(caseDir, "06-deliverables", "publish", `${platform}-package`);
+  fs.mkdirSync(packageDir, { recursive: true });
+  const title = inferTitle(caseName, draft);
+  const synopsis = inferSynopsis(draft);
+  fs.writeFileSync(path.join(packageDir, "chapter.txt"), draft, "utf-8");
+  fs.writeFileSync(path.join(packageDir, "title.txt"), `${title}\n`, "utf-8");
+  fs.writeFileSync(path.join(packageDir, "synopsis.txt"), `${synopsis}\n`, "utf-8");
+  fs.writeFileSync(path.join(packageDir, "publish-checklist.md"), formatPublishChecklist(caseName, version, platform), "utf-8");
+  writeJson(path.join(packageDir, "manual-copy-plan.json"), {
+    case: caseName,
+    version,
+    platform,
+    created_at: new Date().toISOString(),
+    live_write: false,
+    files: {
+      chapter: "chapter.txt",
+      title: "title.txt",
+      synopsis: "synopsis.txt",
+      checklist: "publish-checklist.md",
+    },
+    next_action: "manual_copy_after_human_publish_approval",
+  });
+  updateManifest(caseDir, {
+    lastPublishPrep: {
+      version,
+      platform,
+      package: path.relative(caseDir, packageDir).replace(/\\/g, "/"),
+      liveWrite: false,
+    },
+  });
+  console.log(`Publish package prepared: ${path.relative(CWD, packageDir).replace(/\\/g, "/")}`);
+  console.log("Live write: false");
+}
+
+function publishChecklistCase(caseName, args) {
+  const options = parseOptions(args);
+  const platform = options.platform || "fanqie";
+  const caseDir = requireCaseDir(caseName);
+  const state = loadState(caseDir, caseName);
+  const version = normalizeVersion(options.version) || state.current_version || detectCaseVersions(caseDir).highest || "v1";
+  const checklistPath = path.join(caseDir, "06-deliverables", "publish", `${platform}-package`, "publish-checklist.md");
+  if (!fs.existsSync(checklistPath)) {
+    publishPrepCase(caseName, ["--platform", platform, "--version", version]);
+    return;
+  }
+  console.log(path.relative(CWD, checklistPath).replace(/\\/g, "/"));
+}
+
+function inferTitle(caseName, draft) {
+  const heading = draft.split(/\r?\n/).find((line) => /^#\s+/.test(line));
+  if (!heading) return caseName;
+  return heading.replace(/^#\s+/, "").trim() || caseName;
+}
+
+function inferSynopsis(draft) {
+  const lines = draft.split(/\r?\n/).map((line) => line.trim()).filter((line) => line && !line.startsWith("#"));
+  return lines.slice(0, 3).join("\n").slice(0, 500);
+}
+
+function formatPublishChecklist(caseName, version, platform) {
+  return `# Publish Checklist — ${caseName} ${version}
+
+Platform: ${platform}
+Live write: false
+
+- Confirm final draft version with user.
+- Confirm title and synopsis.
+- Copy chapter text manually into the platform editor.
+- Preview formatting in the platform editor.
+- Publish only after explicit human approval.
+`;
 }
 
 // ─── Helpers ───────────────────────────────────────────────────
@@ -1163,6 +1809,8 @@ function main() {
   if (cmd === "case") {
     if (subcmd === "init") initCase(name);
     else if (subcmd === "check") checkCase(name);
+    else if (subcmd === "fair-check") fairCheckCase(name, args.slice(3));
+    else if (subcmd === "score") scoreCase(name, args.slice(3));
     else if (subcmd === "status") statusCase(name);
     else if (subcmd === "rollback") rollbackCase(name, args.slice(3));
     else if (subcmd === "promote") promoteCase(name, args.slice(3));
@@ -1177,6 +1825,21 @@ function main() {
     else if (subcmd === "list") listCases();
     else {
       console.error(`Unknown case subcommand: ${subcmd}`);
+      process.exit(1);
+    }
+  } else if (cmd === "publish") {
+    if (subcmd === "prep") publishPrepCase(name, args.slice(3));
+    else if (subcmd === "checklist") publishChecklistCase(name, args.slice(3));
+    else {
+      console.error(`Unknown publish subcommand: ${subcmd}`);
+      process.exit(1);
+    }
+  } else if (cmd === "memory") {
+    if (subcmd === "init") memoryInit(args.slice(2));
+    else if (subcmd === "check") memoryCheck(args.slice(2));
+    else if (subcmd === "show") memoryShow(args.slice(2));
+    else {
+      console.error(`Unknown memory subcommand: ${subcmd}`);
       process.exit(1);
     }
   } else {

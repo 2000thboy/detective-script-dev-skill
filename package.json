@@ -4,8 +4,20 @@
   "description": "Detective fiction skill package: deterministic artifact protocol + core trick lock + multi-agent review",
   "main": "ops/skills/detective-script-dev/SKILL.md",
   "bin": {
+    "wolf": "src/bin/wolf-runner.js",
     "wolf-runner": "src/bin/wolf-runner.js"
   },
+  "files": [
+    "ops/skills/detective-script-dev/",
+    "src/",
+    ".plan/",
+    ".workflow/README.md",
+    ".kit/config.json",
+    ".kit/version.json",
+    "README.md",
+    "AGENTS.md",
+    "config.example.json"
+  ],
   "scripts": {
     "check": "node --check src/bin/wolf-runner.js && node --check src/adapters/fanqie/fanqie-cli.js && node --check ops/skills/detective-script-dev/scripts/wolf-runner.js && node --check ops/skills/detective-script-dev/scripts/fanqie-cli.js",
     "case:init": "node src/bin/wolf-runner.js case init",

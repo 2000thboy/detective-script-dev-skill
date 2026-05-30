@@ -105,6 +105,17 @@ function createVersionArtifacts(root, name, maxVersion) {
   }
 }
 
+function prepareFairnessCase(root, name, clues, draft) {
+  initCase(root, name);
+  lockCoreTrick(root, name);
+  const truthPath = path.join(caseDir(root, name), "00-meta", "truth-file.json");
+  const truth = readJson(truthPath);
+  truth.clues = clues;
+  truth.core_trick.canonical_solution = "The canonical solution is revealed after the marked truth section.";
+  writeJson(truthPath, truth);
+  writeText(path.join(caseDir(root, name), "04-drafts", "v1", "full.md"), draft);
+}
+
 function validReview(lockHash) {
   return {
     reviewer_id: "logic-checker",
@@ -239,6 +250,187 @@ function assertFanqieLiveGate() {
   assert.doesNotMatch(`${checkStatus.stdout}\n${checkStatus.stderr}`, /CONFIRM_REQUIRED/);
 }
 
+function assertFairnessPassLockedRoom() {
+  const root = tempRoot("fair-pass");
+  prepareFairnessCase(
+    root,
+    "ACCEPT-LOCKED-ROOM",
+    [
+      { id: "cl-door", claim: "door wax seal", aliases: ["wax seal"], expected_before_reveal: true },
+      { id: "cl-window", claim: "scratched window latch", aliases: ["window latch"], expected_before_reveal: true },
+      { id: "cl-key", claim: "brass duplicate key", aliases: ["duplicate key"], expected_before_reveal: true },
+      { id: "cl-clock", claim: "stopped corridor clock", aliases: ["corridor clock"], expected_before_reveal: true },
+      { id: "cl-ash", claim: "white ash under threshold", aliases: ["white ash"], expected_before_reveal: true },
+    ],
+    [
+      "# Locked Room",
+      "The wax seal on the study door was intact.",
+      "A scratched window latch caught the detective's eye.",
+      "The brass duplicate key was listed in the housekeeper's ledger.",
+      "The stopped corridor clock pointed to an impossible time.",
+      "White ash under threshold marked the hidden draft.",
+      "## 真相",
+      "The canonical solution explains the locked room.",
+    ].join("\n")
+  );
+  const out = run([runner, "case", "fair-check", "ACCEPT-LOCKED-ROOM", "--version", "v1", "--json"], root);
+  const report = JSON.parse(out);
+  assert.strictEqual(report.status, "PASS");
+  assert.strictEqual(report.items.length, 5);
+  assert.ok(fs.existsSync(path.join(caseDir(root, "ACCEPT-LOCKED-ROOM"), "05-reviews", "v1", "fairness-report.json")));
+}
+
+function assertFairnessBlockedMissingClueAlibi() {
+  const root = tempRoot("fair-missing");
+  prepareFairnessCase(
+    root,
+    "ACCEPT-ALIBI",
+    [
+      { id: "cl-ticket", claim: "platform ticket stamp", aliases: ["ticket stamp"], expected_before_reveal: true },
+      { id: "cl-call", claim: "missed midnight call", aliases: ["midnight call"], expected_before_reveal: true },
+      { id: "cl-photo", claim: "rain on the photo", aliases: ["rain photo"], expected_before_reveal: true },
+      { id: "cl-map", claim: "folded station map", aliases: ["station map"], expected_before_reveal: true },
+      { id: "cl-watch", claim: "watch set seven minutes fast", aliases: ["seven minutes fast"], expected_before_reveal: true },
+    ],
+    [
+      "# Alibi",
+      "The platform ticket stamp and missed midnight call seemed to clear the suspect.",
+      "Rain on the photo contradicted the stated route.",
+      "The folded station map had one corner torn away.",
+      "## 解谜",
+      "The watch set seven minutes fast finally solved the alibi.",
+    ].join("\n")
+  );
+  const blocked = runRaw([runner, "case", "fair-check", "ACCEPT-ALIBI", "--version", "v1", "--json"], root);
+  assert.notStrictEqual(blocked.status, 0);
+  const report = JSON.parse(blocked.stdout);
+  assert.strictEqual(report.status, "BLOCKED");
+  assert.ok(report.items.some((item) => item.id === "cl-watch" && item.status === "BLOCKED"));
+}
+
+function assertFairnessBlockedRevealOnlySocialMotive() {
+  const root = tempRoot("fair-reveal");
+  prepareFairnessCase(
+    root,
+    "ACCEPT-SOCIAL-MOTIVE",
+    [
+      { id: "cl-ledger", claim: "factory relief ledger", aliases: ["relief ledger"], expected_before_reveal: true },
+      { id: "cl-badge", claim: "union badge scratch", aliases: ["union badge"], expected_before_reveal: true },
+      { id: "cl-letter", claim: "burned apology letter", aliases: ["apology letter"], expected_before_reveal: true },
+      { id: "cl-song", claim: "old protest song", aliases: ["protest song"], expected_before_reveal: true },
+      { id: "cl-debt", claim: "medical debt receipt", aliases: ["debt receipt"], expected_before_reveal: true },
+    ],
+    [
+      "# Social Motive",
+      "The factory relief ledger, union badge scratch, burned apology letter, and old protest song were all mentioned early.",
+      "## 真相",
+      "Only now did the detective reveal the medical debt receipt.",
+    ].join("\n")
+  );
+  const blocked = runRaw([runner, "case", "fair-check", "ACCEPT-SOCIAL-MOTIVE", "--version", "v1", "--json"], root);
+  assert.notStrictEqual(blocked.status, 0);
+  const report = JSON.parse(blocked.stdout);
+  assert.strictEqual(report.status, "BLOCKED");
+  assert.ok(report.items.some((item) => item.id === "cl-debt" && item.issue.includes("at or after reveal")));
+}
+
+function assertPackageWolfAlias() {
+  const pkg = readJson(path.join(repoRoot, "package.json"));
+  assert.strictEqual(pkg.bin.wolf, "src/bin/wolf-runner.js");
+  assert.strictEqual(pkg.bin["wolf-runner"], "src/bin/wolf-runner.js");
+  assert.ok(pkg.files.includes("ops/skills/detective-script-dev/"));
+  assert.ok(pkg.files.includes("src/"));
+  assert.ok(!pkg.files.some((entry) => entry.startsWith(".omc")));
+  assert.ok(!pkg.files.some((entry) => entry.startsWith("content/cases/HYOUKA-GZ")));
+}
+
+function assertPublishPrepNoLiveWrite() {
+  const root = tempRoot("publish-prep");
+  initCase(root, "ACCEPT-PUBLISH");
+  lockCoreTrick(root, "ACCEPT-PUBLISH");
+  writeText(
+    path.join(caseDir(root, "ACCEPT-PUBLISH"), "04-drafts", "v1", "full.md"),
+    "# Publishable Chapter\nThis chapter is ready for manual copy.\n"
+  );
+  const out = run([runner, "publish", "prep", "ACCEPT-PUBLISH", "--platform", "fanqie", "--version", "v1"], root);
+  assert.match(out, /Live write: false/);
+  const packageDir = path.join(caseDir(root, "ACCEPT-PUBLISH"), "06-deliverables", "publish", "fanqie-package");
+  assert.ok(fs.existsSync(path.join(packageDir, "chapter.txt")));
+  assert.ok(fs.existsSync(path.join(packageDir, "publish-checklist.md")));
+  const plan = readJson(path.join(packageDir, "manual-copy-plan.json"));
+  assert.strictEqual(plan.live_write, false);
+  assert.strictEqual(plan.next_action, "manual_copy_after_human_publish_approval");
+}
+
+function assertMemorySchemaLifecycle() {
+  const root = tempRoot("memory");
+  const memoryPath = path.join(root, "memory.json");
+  run([runner, "memory", "init", "--path", memoryPath], root);
+  assert.ok(fs.existsSync(memoryPath));
+  const checked = run([runner, "memory", "check", "--path", memoryPath, "--json"], root);
+  const result = JSON.parse(checked);
+  assert.strictEqual(result.ok, true);
+  const shown = JSON.parse(run([runner, "memory", "show", "--path", memoryPath, "--json"], root));
+  assert.strictEqual(shown.configured, true);
+  const memory = readJson(memoryPath);
+  memory.user_profile.preferred_style = "not-array";
+  writeJson(memoryPath, memory);
+  const blocked = runRaw([runner, "memory", "check", "--path", memoryPath, "--json"], root);
+  assert.notStrictEqual(blocked.status, 0);
+  assert.strictEqual(JSON.parse(blocked.stdout).ok, false);
+}
+
+function assertQualityScorePassAndBlocked() {
+  const root = tempRoot("quality");
+  prepareFairnessCase(
+    root,
+    "ACCEPT-QUALITY",
+    [
+      { id: "cl-a", claim: "blue envelope", aliases: ["blue envelope"], expected_before_reveal: true },
+      { id: "cl-b", claim: "quiet stair", aliases: ["quiet stair"], expected_before_reveal: true },
+      { id: "cl-c", claim: "left glove", aliases: ["left glove"], expected_before_reveal: true },
+      { id: "cl-d", claim: "silver bell", aliases: ["silver bell"], expected_before_reveal: true },
+      { id: "cl-e", claim: "final receipt", aliases: ["final receipt"], expected_before_reveal: true },
+    ],
+    [
+      "# Quality Case",
+      "The blue envelope, quiet stair, left glove, silver bell, and final receipt were all visible.",
+      "The detective kept checking the blue envelope and quiet stair while the witness described the left glove.",
+      "The silver bell and final receipt made the route solvable before the reveal.",
+      "Filler ".repeat(900),
+      "## 真相",
+      "The clues resolve fairly.",
+    ].join("\n")
+  );
+  run([runner, "case", "fair-check", "ACCEPT-QUALITY", "--version", "v1"], root);
+  const out = run([runner, "case", "score", "ACCEPT-QUALITY", "--version", "v1", "--json"], root);
+  const report = JSON.parse(out);
+  assert.ok(report.score >= 85);
+  assert.strictEqual(report.verdict, "pass");
+  assert.ok(fs.existsSync(path.join(caseDir(root, "ACCEPT-QUALITY"), "05-reviews", "v1", "quality-score.json")));
+
+  prepareFairnessCase(
+    root,
+    "ACCEPT-QUALITY-BLOCKED",
+    [{ id: "cl-missing", claim: "missing impossible clue", expected_before_reveal: true }],
+    "# Blocked\nNo clue here.\n## 真相\nThe missing impossible clue appears too late.\n"
+  );
+  const blocked = runRaw([runner, "case", "score", "ACCEPT-QUALITY-BLOCKED", "--version", "v1", "--json"], root);
+  assert.notStrictEqual(blocked.status, 0);
+  assert.strictEqual(JSON.parse(blocked.stdout).verdict, "blocked");
+}
+
+function assertDistributionMaterials() {
+  const marketplace = readJson(path.join(repoRoot, "ops", "skills", "detective-script-dev", "marketplace.json"));
+  assert.strictEqual(marketplace.name, "detective-script-dev");
+  assert.strictEqual(marketplace.safety.live_platform_writes, false);
+  assert.ok(marketplace.capabilities.includes("clue fairness check before reveal"));
+  const beta = fs.readFileSync(path.join(repoRoot, "ops", "skills", "detective-script-dev", "references", "beta-acceptance.md"), "utf-8");
+  assert.match(beta, /No beta run performs live platform writes/);
+  assert.match(beta, /wolf case fair-check/);
+  assert.match(beta, /wolf case score/);
+}
+
 const scenarios = [
   assertRealCaseRegression,
   assertBaseCaseLifecycle,
@@ -247,6 +439,14 @@ const scenarios = [
   assertV12VersionPromotion,
   assertReviewSchemaBlocking,
   assertFanqieLiveGate,
+  assertFairnessPassLockedRoom,
+  assertFairnessBlockedMissingClueAlibi,
+  assertFairnessBlockedRevealOnlySocialMotive,
+  assertPackageWolfAlias,
+  assertPublishPrepNoLiveWrite,
+  assertMemorySchemaLifecycle,
+  assertQualityScorePassAndBlocked,
+  assertDistributionMaterials,
 ];
 
 for (const scenario of scenarios) {

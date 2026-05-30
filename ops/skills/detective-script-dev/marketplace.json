@@ -1,0 +1,38 @@
+{
+  "name": "detective-script-dev",
+  "version": "1.0.0",
+  "title": "Detective Script Dev",
+  "short_description": "Frontend-free detective fiction workflow with core trick locking, fairness checks, quality scoring, and manual publish prep.",
+  "language": "zh-CN",
+  "category": "writing",
+  "capabilities": [
+    "deterministic case artifact protocol",
+    "core trick lock and writer constraints",
+    "clue fairness check before reveal",
+    "0-100 quality score report",
+    "static user preference memory",
+    "multi-agent review contracts",
+    "manual publish preparation without live platform writes"
+  ],
+  "entrypoint": "SKILL.md",
+  "commands": [
+    "wolf case init <case>",
+    "wolf case check <case>",
+    "wolf case fair-check <case> --version vN",
+    "wolf case score <case> --version vN",
+    "wolf publish prep <case> --platform fanqie --version vN",
+    "wolf memory init",
+    "wolf memory check",
+    "wolf memory show"
+  ],
+  "safety": {
+    "live_platform_writes": false,
+    "requires_human_publish_approval": true,
+    "stores_credentials": false
+  },
+  "verification": [
+    "npm run acceptance",
+    "npm test",
+    "quick_validate.py ops/skills/detective-script-dev"
+  ]
+}

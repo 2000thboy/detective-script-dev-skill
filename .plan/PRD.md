@@ -8,7 +8,7 @@
 
 ## Product Goal
 
-Provide a local skill that helps produce and review detective fiction cases with deterministic artifacts, core trick locking, multi-agent review contracts, and Fanqie publishing safety gates.
+Provide a local skill that helps produce and review detective fiction cases with deterministic artifacts, core trick locking, clue fairness checking, 0-100 quality scoring, static user preference memory, multi-agent review contracts, and Fanqie publishing safety gates.
 
 ## Active Product Surface
 
@@ -31,7 +31,10 @@ Provide a local skill that helps produce and review detective fiction cases with
 ## Acceptance
 
 - `npm test` passes.
-- `npm run acceptance` runs all 7 multi-case scenarios.
+- `npm run acceptance` runs all multi-case scenarios.
+- Fairness checking is covered by locked-room, alibi, and social-motive acceptance cases.
+- Static memory schema and quality scoring are covered by acceptance scenarios.
+- Distribution readiness includes local `marketplace.json` and beta acceptance script; no external submission is claimed.
 - `python C:\Users\hy11\.codex\skills\.system\skill-creator\scripts\quick_validate.py ops\skills\detective-script-dev` passes.
 - Local installs under Trae Solo and WorkBuddy contain the same skill package files.
 - Cloud remote `origin` points to `https://github.com/2000thboy/detective-script-dev-skill.git`.

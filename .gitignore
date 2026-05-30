@@ -7,11 +7,13 @@ node_modules/
 .claude/tools/tests/tmp/
 frontend/node_modules/.bin/.*-*/
 .claude/configs/
+.omc/
 .omc/state/
 .env
 .env.local
 data/
 artifacts/
+content/cases/*/06-deliverables/publish/
 
 # External projects (accidentally committed)
 Documents/

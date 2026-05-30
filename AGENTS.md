@@ -7,7 +7,7 @@ Project version: 1.0.0
 This repository is **detective-script-dev**: a frontend-free detective fiction skill with deterministic case artifacts, core trick locking, multi-agent review contracts, and optional Fanqie publishing.
 
 - Do not restore the old React/Vite frontend workbench unless the user explicitly asks.
-- Treat `.plan/PRD.md`, `.plan/SPEC.md`, `.plan/CHECKLIST.md`, `.kit/config.json`, `.kit/version.json`, `README.md`, and this file as active facts.
+- Treat `.plan/PRD.md`, `.plan/SPEC.md`, `.plan/CHECKLIST.md`, `.kit/config.json`, `.kit/version.json`, `.test/README.md`, `README.md`, and this file as active facts.
 - Do not reintroduce deleted migration leftovers such as `archive/`, `.workflows/`, `ops/legacy/`, or `content/knowledge/` unless the user explicitly asks.
 - Keep Fanqie live operations behind explicit human approval.
 - Never commit real account material, cookies, Chrome profiles, provider keys, `book_id`, or `volume_id`.
@@ -21,6 +21,7 @@ This repository is **detective-script-dev**: a frontend-free detective fiction s
 | Case artifacts | `content/cases/{case}/` |
 | Workflow entry | `.workflow/README.md` |
 | Fanqie adapter | `src/adapters/fanqie/fanqie-cli.js` |
+| Test sandbox | `.test/` |
 
 ## Case Protocol
 
@@ -44,6 +45,8 @@ Run after code or package-affecting changes:
 
 ```bash
 npm test
+npm run acceptance
+npm pack --dry-run --json
 node src/bin/wolf-runner.js case list
 node src/bin/wolf-runner.js case check HYOUKA-GZ
 ```

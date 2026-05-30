@@ -1,0 +1,16 @@
+{
+  "version": "1.0",
+  "project": "detective-script-dev",
+  "ai": ".test/ai",
+  "user": ".test/user",
+  "lanes": [
+    ".test/ai",
+    ".test/user"
+  ],
+  "evidence_policy": {
+    "ai_self_checks": ".test/ai/evidence",
+    "internal_beta_feedback": ".test/user/evidence",
+    "live_platform_writes": "forbidden_without_explicit_human_approval",
+    "secrets": "forbidden"
+  }
+}

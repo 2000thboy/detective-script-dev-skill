@@ -27,6 +27,8 @@ Required checks:
 node ops/skills/detective-script-dev/scripts/wolf-runner.js case list
 node ops/skills/detective-script-dev/scripts/wolf-runner.js case check CASE_NAME
 node ops/skills/detective-script-dev/scripts/wolf-runner.js case check CASE_NAME --no-write
+node ops/skills/detective-script-dev/scripts/wolf-runner.js case fair-check CASE_NAME --version vN
+node ops/skills/detective-script-dev/scripts/wolf-runner.js case score CASE_NAME --version vN
 node ops/skills/detective-script-dev/scripts/wolf-runner.js case status CASE_NAME
 node ops/skills/detective-script-dev/scripts/wolf-runner.js case lock CASE_NAME --owner "agent-or-human" --ttl-minutes 120
 node ops/skills/detective-script-dev/scripts/wolf-runner.js case unlock CASE_NAME --owner "agent-or-human"
@@ -88,3 +90,56 @@ Treat fused cases as hard stops until the user approves a new direction.
 Use `case lock` / `case unlock` before and after coordinated writes. Locks are
 lightweight leases stored in `active_run`; they are meant to prevent accidental
 multi-agent state overwrites, not to replace filesystem permissions.
+
+## Fairness Report
+
+`case fair-check` reads `00-meta/truth-file.json` and the selected draft, then
+writes:
+
+```text
+content/cases/{case}/05-reviews/vN/fairness-report.json
+content/cases/{case}/05-reviews/vN/fairness-report.md
+```
+
+Each clue in `truth-file.json.clues[]` should provide searchable text through
+`claim`, `description`, `name`, `significance`, or `aliases`. A clue with
+`expected_before_reveal: false` is exempt from pre-reveal planting.
+
+Treat `BLOCKED` as an editor stop: the draft cannot be approved until the clue
+appears before the reveal, or the user explicitly approves a change to the
+locked truth.
+
+## Quality Score
+
+`case score` writes:
+
+```text
+content/cases/{case}/05-reviews/vN/quality-score.json
+content/cases/{case}/05-reviews/vN/quality-score.md
+```
+
+The score is 0-100 across core trick lock, fairness, draft completeness,
+structured review presence, and publish readiness. A `blocked` verdict is an
+editor stop.
+
+## Static Memory
+
+Optional memory lives at `~/.config/wolf/memory.json`:
+
+```json
+{
+  "version": "1.0",
+  "user_profile": {
+    "preferred_style": [],
+    "preferred_pace": "",
+    "preferred_trick_type": [],
+    "chapter_length_target": null,
+    "outline_depth": null
+  },
+  "successful_cases": [],
+  "failure_patterns": []
+}
+```
+
+Use `memory init`, `memory check`, and `memory show`. Memory is preference
+context only; it must not override locked case truth.
