@@ -21,7 +21,7 @@
     "fanqie-live-gate"
   ],
   "blockers": [],
-  "notes": "迁移残留已删除。当前仓库只保留产品化 skill、runner、Fanqie adapter、HYOUKA-GZ 回归案例和必要事实文档。",
+  "notes": "迁移残留和案例内容已删除。当前仓库只保留产品化 skill、runner、Fanqie adapter 和必要事实文档。",
   "milestone": "runnable skill package",
   "last_updated": "2026-05-29T22:30:00+08:00",
   "owner": "hy11",
