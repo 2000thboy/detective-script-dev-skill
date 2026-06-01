@@ -103,12 +103,51 @@ const ARTIFACT_PROTOCOL = {
   },
 };
 
+// ─── Case Name Sanitization ────────────────────────────────────
+
+function sanitizeCaseName(caseName) {
+  if (!caseName) return null;
+  const trimmed = String(caseName).trim();
+  if (!trimmed) return null;
+  // Reject path traversal attempts
+  if (trimmed.includes('..') || trimmed.includes('/') || trimmed.includes('\\')) {
+    console.error(`Error: case name cannot contain path separators: ${trimmed}`);
+    process.exit(1);
+  }
+  return trimmed;
+}
+
+// ─── Project Root Detection ────────────────────────────────────
+
+function detectProjectRoot() {
+  // Check for package.json or content/cases/ or .kit/ in current dir or parents
+  let dir = process.cwd();
+  for (let i = 0; i < 3; i++) {
+    if (fs.existsSync(path.join(dir, 'package.json')) ||
+        fs.existsSync(path.join(dir, 'content')) ||
+        fs.existsSync(path.join(dir, '.kit'))) {
+      return dir;
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return null;
+}
+
 // ─── Case Init ─────────────────────────────────────────────────
 
 function initCase(caseName) {
+  caseName = sanitizeCaseName(caseName);
   if (!caseName) {
     console.error("Error: case name required");
     process.exit(1);
+  }
+
+  const projectRoot = detectProjectRoot();
+  if (!projectRoot) {
+    console.warn('Warning: No project root detected. Case will be created under current directory.');
+    console.warn('Expected to find package.json, content/, or .kit/ in current or parent directories.');
   }
 
   const caseDir = path.join(CASES_DIR, caseName);
@@ -148,6 +187,7 @@ function initCase(caseName) {
 // ─── Case Check ────────────────────────────────────────────────
 
 function checkCase(caseName) {
+  caseName = sanitizeCaseName(caseName);
   const options = parseOptions(process.argv.slice(5));
   if (!caseName) {
     console.error("Error: case name required");
@@ -305,6 +345,7 @@ function checkCase(caseName) {
 // ─── Fairness Check ───────────────────────────────────────────
 
 function fairCheckCase(caseName, args) {
+  caseName = sanitizeCaseName(caseName);
   const options = parseOptions(args);
   const caseDir = requireCaseDir(caseName);
   const state = loadState(caseDir, caseName);
@@ -321,7 +362,13 @@ function fairCheckCase(caseName, args) {
     process.exit(1);
   }
 
-  const truthFile = readJson(truthPath);
+  let truthFile;
+  try {
+    truthFile = JSON.parse(fs.readFileSync(truthPath, 'utf-8'));
+  } catch (err) {
+    console.error(`Error: truth-file.json is invalid: ${err.message}`);
+    process.exit(1);
+  }
   const draft = fs.readFileSync(draftPath, "utf-8");
   const report = buildFairnessReport(caseName, version, truthFile, draft, draftPath, truthPath);
   const reviewDir = path.join(caseDir, "05-reviews", version);
@@ -354,9 +401,14 @@ function fairCheckCase(caseName, args) {
 }
 
 function scoreCase(caseName, args) {
+  caseName = sanitizeCaseName(caseName);
   const options = parseOptions(args);
   const caseDir = requireCaseDir(caseName);
   const state = loadState(caseDir, caseName);
+  if (!state.completed_nodes || !state.completed_nodes.includes('draft')) {
+    console.error('Error: case has not reached draft phase. Run draft-start first.');
+    process.exit(1);
+  }
   const version = normalizeVersion(options.version) || state.current_version || detectCaseVersions(caseDir).highest || "v1";
   const truthPath = path.join(caseDir, "00-meta", "truth-file.json");
   const draftPath = resolveDraftPath(caseDir, version);
@@ -697,13 +749,19 @@ function formatQualityMarkdown(report) {
 function loadWolfConfig() {
   const home = process.env.USERPROFILE || process.env.HOME;
   if (!home) return {};
-  const configPath = path.join(home, ".config", "wolf", "config.json");
+  const configDir = process.env.XDG_CONFIG_HOME || path.join(home, '.config');
+  const configPath = path.join(configDir, 'wolf', 'config.json');
   if (!fs.existsSync(configPath)) return {};
   try {
-    return readJson(configPath);
+    const raw = fs.readFileSync(configPath, 'utf-8');
+    const parsed = JSON.parse(raw);
+    const config = {};
+    if (typeof parsed.caseRoot === 'string') config.caseRoot = parsed.caseRoot;
+    if (typeof parsed.maxRollbacks === 'number') config.maxRollbacks = parsed.maxRollbacks;
+    return config;
   } catch (err) {
-    console.error(`Error: invalid config at ${configPath}: ${err.message}`);
-    process.exit(1);
+    console.warn('Warning: Invalid config at', configPath, '- using defaults');
+    return {};
   }
 }
 
@@ -843,6 +901,7 @@ function validateMemory(memory) {
 // ─── Case Status / Rollback / Archive ─────────────────────────
 
 function statusCase(caseName) {
+  caseName = sanitizeCaseName(caseName);
   const caseDir = requireCaseDir(caseName);
   const state = loadState(caseDir, caseName);
   const manifest = readJson(path.join(caseDir, ".case", "manifest.json"));
@@ -851,6 +910,7 @@ function statusCase(caseName) {
 }
 
 function rollbackCase(caseName, args) {
+  caseName = sanitizeCaseName(caseName);
   const options = parseOptions(args);
   const targetVersion = normalizeVersion(options.to);
   if (!targetVersion) {
@@ -929,6 +989,7 @@ function rollbackCase(caseName, args) {
 }
 
 function archiveCase(caseName, args) {
+  caseName = sanitizeCaseName(caseName);
   const options = parseOptions(args);
   const caseDir = requireCaseDir(caseName);
   const now = new Date().toISOString();
@@ -946,6 +1007,7 @@ function archiveCase(caseName, args) {
 }
 
 function lockCase(caseName, args) {
+  caseName = sanitizeCaseName(caseName);
   const options = parseOptions(args);
   const owner = options.owner;
   if (!owner) {
@@ -985,6 +1047,7 @@ function lockCase(caseName, args) {
 }
 
 function unlockCase(caseName, args) {
+  caseName = sanitizeCaseName(caseName);
   const options = parseOptions(args);
   const owner = options.owner;
   if (!owner) {
@@ -1009,6 +1072,7 @@ function unlockCase(caseName, args) {
 }
 
 function promoteCase(caseName, args) {
+  caseName = sanitizeCaseName(caseName);
   const options = parseOptions(args);
   const targetVersion = normalizeVersion(options.version);
   if (!targetVersion || !options.owner || !options.reason) {
@@ -1047,6 +1111,7 @@ function promoteCase(caseName, args) {
 }
 
 function recoverCase(caseName, args) {
+  caseName = sanitizeCaseName(caseName);
   const options = parseOptions(args);
   if (!options.manual || !options.owner || !options.reason) {
     console.error("Error: recover requires --manual --owner NAME --reason TEXT");
@@ -1079,6 +1144,7 @@ function recoverCase(caseName, args) {
 }
 
 function agentStartCase(caseName, args) {
+  caseName = sanitizeCaseName(caseName);
   const options = parseOptions(args);
   if (!options.owner || !options.target) {
     console.error("Error: agent-start requires --owner NAME --target PATH");
@@ -1105,6 +1171,7 @@ function agentStartCase(caseName, args) {
 }
 
 function agentFinishCase(caseName, args) {
+  caseName = sanitizeCaseName(caseName);
   const options = parseOptions(args);
   if (!options.owner || !["done", "failed"].includes(options.status)) {
     console.error("Error: agent-finish requires --owner NAME --status done|failed");
@@ -1129,6 +1196,7 @@ function agentFinishCase(caseName, args) {
 }
 
 function briefCase(caseName) {
+  caseName = sanitizeCaseName(caseName);
   const caseDir = requireCaseDir(caseName);
   const state = loadState(caseDir, caseName);
   const truthFile = readJson(path.join(caseDir, "00-meta", "truth-file.json"));
@@ -1156,6 +1224,7 @@ function briefCase(caseName) {
 }
 
 function nodeCommandCase(command, caseName, args) {
+  caseName = sanitizeCaseName(caseName);
   const config = NODE_COMMANDS.get(command);
   const options = parseOptions(args);
   const owner = options.owner || "unknown";
@@ -1166,6 +1235,11 @@ function nodeCommandCase(command, caseName, args) {
     assertCoreTrickReady(caseDir, command);
   }
   if (command === "trick-lock") {
+    if (!options['i-approve']) {
+      console.error('CONFIRM_REQUIRED');
+      console.error('Locking the core trick is irreversible. Re-run with --i-approve after reviewing the truth file.');
+      process.exit(2);
+    }
     lockCoreTrick(caseDir, owner);
   }
   if (command === "draft-start") {
@@ -1211,6 +1285,7 @@ function listCases() {
 // ─── Publish Prep ─────────────────────────────────────────────
 
 function publishPrepCase(caseName, args) {
+  caseName = sanitizeCaseName(caseName);
   const options = parseOptions(args);
   const platform = options.platform || "fanqie";
   const caseDir = requireCaseDir(caseName);
@@ -1258,6 +1333,7 @@ function publishPrepCase(caseName, args) {
 }
 
 function publishChecklistCase(caseName, args) {
+  caseName = sanitizeCaseName(caseName);
   const options = parseOptions(args);
   const platform = options.platform || "fanqie";
   const caseDir = requireCaseDir(caseName);

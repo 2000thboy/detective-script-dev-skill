@@ -58,6 +58,14 @@ already gave enough direction, do not over-interview.
 - Prepare Fanqie command packages only after `publish-approval`; never perform
   live publishing without explicit user approval.
 
+## When NOT to Use
+
+- Do not use for non-mystery fiction genres (romance, sci-fi without mystery elements, etc.).
+- Do not use for live platform publishing without explicit human `--confirm-live` approval.
+- Do not use for general creative writing without a structured case workflow.
+- Do not use when the user has not provided a case name or creative direction.
+- Do not modify locked `truth-file.json` core tricks without user approval.
+
 ## Workflow
 
 ```text

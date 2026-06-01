@@ -16,60 +16,122 @@
  *   node src/adapters/fanqie/fanqie-cli.js fetch-data --book-id ID
  */
 
-const { execSync } = require('child_process');
+const { execSync, execFileSync } = require('child_process');
 const fs = require('fs');
+const path = require('path');
 
 // ─── Shared utilities ───────────────────────────────────────────────────────
 
-function run(cmd) {
-  try {
-    // Detect environment: WSL vs MINGW64/Git Bash vs native Windows
-    const isWsl = require('fs').existsSync('/proc/version') &&
-      require('fs').readFileSync('/proc/version', 'utf8').toLowerCase().includes('microsoft');
-    const isMingw = process.platform === 'win32' || require('child_process').execSync('uname -s', { encoding: 'utf8' }).trim().startsWith('MINGW');
+let OPENCLI_ENV = { ...process.env };
 
-    let prefix;
-    if (isWsl) {
-      prefix = [
-        'mkdir -p .codex-tmp/wsl-node-bin',
-        'printf \'#!/bin/sh\\nexec "/mnt/c/Program Files/nodejs/node.exe" "$@"\\n\' > .codex-tmp/wsl-node-bin/node',
-        'chmod +x .codex-tmp/wsl-node-bin/node',
-        'export PATH="$(pwd)/.codex-tmp/wsl-node-bin:$PATH"'
-      ].join('; ');
-    } else if (isMingw) {
-      // MINGW64/Git Bash: node is already in PATH as /c/Program Files/nodejs/node
-      prefix = 'export PATH="/c/Program Files/nodejs:$PATH"';
-    } else {
-      prefix = '';
-    }
-    const fullCmd = prefix ? `${prefix}; ${cmd}` : cmd;
-    return execSync(fullCmd, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'], shell: 'bash' });
+function setupEnvironment() {
+  const isWsl = fs.existsSync('/proc/version') &&
+    fs.readFileSync('/proc/version', 'utf8').toLowerCase().includes('microsoft');
+  const isMingw = process.platform === 'win32';
+  if (isWsl) {
+    try {
+      execSync('mkdir -p .codex-tmp/wsl-node-bin && printf \'#!/bin/sh\\nexec "/mnt/c/Program Files/nodejs/node.exe" "$@"\\n\' > .codex-tmp/wsl-node-bin/node && chmod +x .codex-tmp/wsl-node-bin/node', { shell: 'bash' });
+      OPENCLI_ENV.PATH = `${process.cwd()}/.codex-tmp/wsl-node-bin:${OPENCLI_ENV.PATH}`;
+    } catch (e) { /* ignore */ }
+  } else if (isMingw) {
+    OPENCLI_ENV.PATH = `/c/Program Files/nodejs:${OPENCLI_ENV.PATH}`;
+  }
+}
+setupEnvironment();
+
+function runOpencli(args) {
+  try {
+    return execFileSync('opencli', ['browser', 'fanqie', ...args], {
+      encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'], env: OPENCLI_ENV, maxBuffer: 10 * 1024 * 1024,
+    });
   } catch (e) {
+    // Fallback: on Windows, opencli may be a .cmd or .bat file that execFileSync cannot resolve directly
+    if (e.code === 'ENOENT' && process.platform === 'win32') {
+      try {
+        const cmd = ['opencli', 'browser', 'fanqie', ...args].map(a => JSON.stringify(a)).join(' ');
+        return execSync(cmd, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'], env: OPENCLI_ENV, shell: true });
+      } catch (e2) {
+        return e2.stdout || e2.stderr || e2.message;
+      }
+    }
     return e.stdout || e.stderr || e.message;
   }
 }
 
-function bashEscape(str) {
-  return str.replace(/'/g, "'\\''");
+function validateContentFile(filePath) {
+  if (!filePath) throw new Error('--file is required');
+  const resolved = path.resolve(filePath);
+  const cwd = process.cwd();
+  const relative = path.relative(cwd, resolved);
+  if (relative.startsWith('..') || path.isAbsolute(relative)) {
+    throw new Error('File must be within the current project directory');
+  }
+  // Symlink detection for defense in depth
+  try {
+    const lstat = fs.lstatSync(resolved);
+    if (lstat.isSymbolicLink()) {
+      throw new Error('Symbolic links are not allowed for content files');
+    }
+  } catch (e) {
+    if (e.code === 'ENOENT') throw new Error('File not found: ' + resolved);
+    if (e.message.includes('Symbolic links')) throw e;
+    // Other lstat errors: continue to exists check
+  }
+  if (!fs.existsSync(resolved)) throw new Error('File not found: ' + resolved);
+  return resolved;
 }
 
-function jsEscape(str) {
-  return str.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n');
+function validateId(id, name) {
+  if (!id) throw new Error(`${name} is required`);
+  const s = String(id);
+  if (!/^\d+$/.test(s)) throw new Error(`${name} must be numeric`);
+  return s;
+}
+
+function validateTitle(title) {
+  if (!title || typeof title !== 'string') throw new Error('title is required');
+  if (title.length > 200) throw new Error('title too long');
+  // Comprehensive XSS vector blocklist: script/iframe/object/embed tags, event handlers, javascript/data URLs
+  if (/<script\b|<iframe\b|<object\b|<embed\b|javascript:|data:text\/html|on\w+\s*=|\bon\w+\b/i.test(title)) {
+    throw new Error('title contains forbidden patterns');
+  }
+  return title;
+}
+
+function validateUrl(url) {
+  if (!url || typeof url !== 'string') throw new Error('URL is required');
+  let parsed;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new Error(`Invalid URL: ${url}`);
+  }
+  if (parsed.protocol !== 'https:' || parsed.hostname !== 'fanqienovel.com') {
+    throw new Error(`Invalid URL: only https://fanqienovel.com/ URLs are allowed`);
+  }
+  return url;
 }
 
 function sleep(s) {
-  const start = Date.now();
-  while (Date.now() - start < s * 1000) {}
+  try {
+    const buffer = new SharedArrayBuffer(4);
+    const view = new Int32Array(buffer);
+    Atomics.wait(view, 0, 0, s * 1000);
+  } catch (e) {
+    const start = Date.now();
+    while (Date.now() - start < s * 1000) {}
+  }
 }
 
 // ─── Browser eval helpers ───────────────────────────────────────────────────
 
 function browserEval(js) {
-  return run(`opencli browser fanqie eval '${bashEscape(js)}'`);
+  return runOpencli(['eval', js]);
 }
 
 function browserOpen(url) {
-  return run(`opencli browser fanqie open "${url}"`);
+  validateUrl(url);
+  return runOpencli(['open', url]);
 }
 
 function removeTour() {
@@ -78,8 +140,8 @@ function removeTour() {
 
 // ─── OpenCLI ref finder helpers ─────────────────────────────────────────────
 
-function findRef(cmd) {
-  const out = run(cmd);
+function findRef(args) {
+  const out = runOpencli(args);
   const lines = out.split('\n').filter(l => l.trim());
   const jsonLine = lines.find(l => l.trim().startsWith('{'));
   if (!jsonLine) {
@@ -102,15 +164,15 @@ function findRef(cmd) {
 }
 
 function findRefByText(text) {
-  return findRef(`opencli browser fanqie find --text "${text}"`);
+  return findRef(['find', '--text', text]);
 }
 
 function findRefByCss(selector) {
-  return findRef(`opencli browser fanqie find --css "${selector}"`);
+  return findRef(['find', '--css', selector]);
 }
 
 function findRefByCssWithText(selector, text) {
-  const out = run(`opencli browser fanqie find --css "${selector}"`);
+  const out = runOpencli(['find', '--css', selector]);
   const lines = out.split('\n').filter(l => l.trim());
   const jsonLine = lines.find(l => l.trim().startsWith('{'));
   if (!jsonLine) return null;
@@ -144,19 +206,18 @@ function closeCategoryModal() {
 }
 
 function opencliClick(ref) {
-  return run(`opencli browser fanqie click ${ref}`);
+  return runOpencli(['click', ref]);
 }
 
 function opencliFill(ref, text) {
-  const escaped = text.replace(/"/g, '\\"');
-  return run(`opencli browser fanqie fill ${ref} "${escaped}"`);
+  return runOpencli(['fill', ref, text]);
 }
 
 // ─── React fiber interaction ────────────────────────────────────────────────
 
 function clickButtonByText(text) {
   const js = `(function(){
-    var btn = [...document.querySelectorAll('button')].find(b => b.textContent.trim() === '${jsEscape(text)}');
+    var btn = [...document.querySelectorAll('button')].find(b => b.textContent.trim() === ${JSON.stringify(text)});
     if(!btn) return 'no button';
     var reactKey = Object.keys(btn).find(k => k.startsWith('__reactFiber'));
     var fiber = reactKey ? btn[reactKey] : null;
@@ -175,9 +236,9 @@ function clickButtonByText(text) {
 }
 
 function fillInput(selector, value, placeholder) {
-  const sel = selector || `input[placeholder="${placeholder}"]`;
+  const sel = selector || `input[placeholder=${JSON.stringify(placeholder)}]`;
   const js = `(function(){
-    var inp = document.querySelector('${sel}');
+    var inp = document.querySelector(${JSON.stringify(sel)});
     if(!inp) return 'not found';
     var reactKey = Object.keys(inp).find(k => k.startsWith('__reactFiber'));
     var fiber = inp[reactKey];
@@ -188,7 +249,7 @@ function fillInput(selector, value, placeholder) {
       p = p.return;
     }
     if(!changeHandler) return 'no handler';
-    inp.value = '${jsEscape(value)}';
+    inp.value = ${JSON.stringify(value)};
     changeHandler({target:inp,currentTarget:inp,persist:function(){},preventDefault:function(){},stopPropagation:function(){},nativeEvent:{}});
     return 'filled';
   })()`;
@@ -202,13 +263,14 @@ function clearEditor() {
 }
 
 function pasteContent(filePath) {
-  const content = fs.readFileSync(filePath, 'utf8');
+  const resolved = validateContentFile(filePath);
+  const content = fs.readFileSync(resolved, 'utf8');
   const base64 = Buffer.from(content).toString('base64');
   browserEval("window._base64Chunks=[];");
   const chunkSize = 6000;
   for (let i = 0; i < base64.length; i += chunkSize) {
     const chunk = base64.slice(i, i + chunkSize);
-    browserEval(`window._base64Chunks.push('${chunk}');`);
+    browserEval(`window._base64Chunks.push(${JSON.stringify(chunk)});`);
   }
   const pasteJs = `(function(){
     var full = window._base64Chunks.join('');
@@ -278,14 +340,14 @@ function callPublishAPI(itemId, bookId, title, volumeId) {
       var adapter = window.adapter;
       var html = adapter ? adapter.getHTML() : '';
       var formData = new FormData();
-      formData.append('item_id', '${itemId}');
-      formData.append('book_id', '${bookId}');
+      formData.append('item_id', ${JSON.stringify(itemId)});
+      formData.append('book_id', ${JSON.stringify(bookId)});
       formData.append('content', html);
       formData.append('timer_status', '0');
       formData.append('need_pay', '0');
       formData.append('volume_name', '第一卷：默认');
-      formData.append('volume_id', '${volumeId}');
-      formData.append('title', '${jsEscape(title)}');
+      formData.append('volume_id', ${JSON.stringify(volumeId)});
+      formData.append('title', ${JSON.stringify(title)});
       formData.append('timer_time', '');
       formData.append('publish_status', '1');
       formData.append('device_platform', 'pc');
@@ -308,8 +370,8 @@ function callDeleteAPI(bookId, itemId) {
   const js = `(async function() {
     try {
       var formData = new FormData();
-      formData.append('book_id', '${bookId}');
-      formData.append('item_id', '${itemId}');
+      formData.append('book_id', ${JSON.stringify(bookId)});
+      formData.append('item_id', ${JSON.stringify(itemId)});
       var res = await fetch('/api/author/delete_article/v0/', { method: 'POST', body: formData });
       var text = await res.text();
       return JSON.stringify({status: res.status, body: text});
@@ -323,21 +385,14 @@ function callDeleteAPI(bookId, itemId) {
 // ─── Subcommand: upload ─────────────────────────────────────────────────────
 
 function cmdUpload(args) {
-  const bookId = args['book-id'];
-  const volumeId = args['volume-id'] || '';
+  const bookId = validateId(args['book-id'], 'book-id');
+  const volumeId = args['volume-id'] ? validateId(args['volume-id'], 'volume-id') : '';
   const filePath = args['file'];
-  const title = args['title'];
-  const itemId = args['item-id'];
+  const title = validateTitle(args['title']);
+  const itemId = args['item-id'] ? validateId(args['item-id'], 'item-id') : '';
   const num = args['num'] || '1';
 
-  if (!bookId || !filePath || !title) {
-    console.error('Usage: upload --book-id ID --file PATH --title "TITLE" [--item-id ID] [--num N]');
-    process.exit(1);
-  }
-  if (!fs.existsSync(filePath)) {
-    console.error('File not found:', filePath);
-    process.exit(1);
-  }
+  const resolved = validateContentFile(filePath);
 
   console.log(`Uploading "${title}" to book ${bookId}`);
 
@@ -374,7 +429,7 @@ function cmdUpload(args) {
 
   // Paste content
   console.log('  Pasting content...');
-  console.log('  ', pasteContent(filePath).trim());
+  console.log('  ', pasteContent(resolved).trim());
   sleep(2);
 
   // Click next
@@ -432,7 +487,7 @@ function cmdUpload(args) {
 // ─── Subcommand: check-status ───────────────────────────────────────────────
 
 function cmdCheckStatus(args) {
-  const bookId = args['book-id'];
+  const bookId = validateId(args['book-id'], 'book-id');
   if (!bookId) {
     console.error('Usage: check-status --book-id ID');
     process.exit(1);
@@ -466,21 +521,21 @@ function cmdCheckStatus(args) {
 // ─── Subcommand: cleanup ────────────────────────────────────────────────────
 
 function cmdCleanup(args) {
-  const bookId = args['book-id'];
+  const bookId = validateId(args['book-id'], 'book-id');
   const keepStr = args['keep'] || '';
-  const keepIds = keepStr.split(',').filter(Boolean);
-
-  if (!bookId) {
-    console.error('Usage: cleanup --book-id ID --keep ITEM1,ITEM2');
-    process.exit(1);
-  }
+  const keepIds = keepStr.split(',').filter(Boolean).map(id => validateId(id, 'keep-id'));
 
   console.log(`Cleaning up drafts for book ${bookId}`);
   console.log('  Keeping:', keepIds.length ? keepIds.join(', ') : 'none specified (will list only)');
 
-  // TODO: Implement full draft listing + auto-dedup logic
-  // For now, manual mode: user provides item IDs to delete
-  const deleteIds = (args['delete'] || '').split(',').filter(Boolean);
+  // Manual mode: user provides item IDs to delete
+  const deleteIds = (args['delete'] || '').split(',').filter(Boolean).map(id => validateId(id, 'delete-id'));
+
+  const intersection = deleteIds.filter(id => keepIds.includes(id));
+  if (intersection.length > 0) {
+    console.error(`  ERROR: Cannot delete IDs that are in keep list: ${intersection.join(', ')}`);
+    process.exit(1);
+  }
 
   for (const itemId of deleteIds) {
     console.log(`  Deleting ${itemId}...`);
@@ -495,11 +550,7 @@ function cmdCleanup(args) {
 // ─── Subcommand: fetch-data ─────────────────────────────────────────────────
 
 function cmdFetchData(args) {
-  const bookId = args['book-id'];
-  if (!bookId) {
-    console.error('Usage: fetch-data --book-id ID');
-    process.exit(1);
-  }
+  const bookId = validateId(args['book-id'], 'book-id');
 
   console.log(`Fetching data for book ${bookId}`);
 
@@ -563,7 +614,7 @@ function cmdFetchData(args) {
   }
 
   // Also try network capture (may not work if requests already completed)
-  const netOut = run(`opencli browser fanqie network --filter "read,earn"`);
+  const netOut = runOpencli(['network', '--filter', 'read,earn']);
   // Extract JSON from output (skip warning lines, find the JSON object)
   const netLines = netOut.split('\n').filter(l => l.trim());
   const jsonStartIdx = netLines.findIndex(l => l.trim().startsWith('{'));
@@ -714,7 +765,7 @@ function cmdCreateBook(args) {
 
   // Step 6: Verify
   console.log('  Step 6: Verifying...');
-  const stateOut = run('opencli browser fanqie state');
+  const stateOut = runOpencli(['state']);
   const urlMatch = stateOut.match(/URL: (https:\/\/[^\s]+)/);
   const currentUrl = urlMatch ? urlMatch[1] : '';
   const bookIdMatch = currentUrl.match(/book-info\/(\d+)/);
@@ -813,7 +864,7 @@ Commands:
   fetch-data    抓取作品数据
                 --book-id ID       书籍ID (required)
 
-  create-book   创建新书籍
+  create-book   MAINTENANCE-ONLY: 创建新书籍
                 --title "TITLE"        书名 (required)
                 --genre GENRE          分类 (default: 悬疑灵异)
                 --synopsis "TEXT"      作品简介 (default: 预设文本)

@@ -2,6 +2,17 @@ const https = require('https');
 const fs = require('fs');
 const path = require('path');
 
+function sanitizeApiError(error) {
+  if (!error) return 'unknown error';
+  if (typeof error === 'string') return error;
+  // Only expose safe fields
+  const safe = {};
+  if (error.message) safe.message = error.message;
+  if (error.type) safe.type = error.type;
+  if (error.code) safe.code = error.code;
+  return JSON.stringify(safe);
+}
+
 function loadEnv(cwd) {
   const env = { ...process.env };
   for (const file of ['.env.local', '.env']) {
@@ -55,7 +66,7 @@ async function callAnthropic(apiKey, systemPrompt, userPrompt, model) {
     }
   );
   if (response.error) {
-    throw new Error(`Anthropic API error: ${response.error.message || JSON.stringify(response.error)}`);
+    throw new Error(`Anthropic API error: ${response.error.message || sanitizeApiError(response.error)}`);
   }
   return response.content && response.content[0] ? response.content[0].text : '';
 }
@@ -78,7 +89,7 @@ async function callOpenAI(apiKey, systemPrompt, userPrompt, model) {
     }
   );
   if (response.error) {
-    throw new Error(`OpenAI API error: ${response.error.message || JSON.stringify(response.error)}`);
+    throw new Error(`OpenAI API error: ${response.error.message || sanitizeApiError(response.error)}`);
   }
   return response.choices && response.choices[0] ? response.choices[0].message.content : '';
 }

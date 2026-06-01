@@ -65,6 +65,8 @@ content/cases/{case}/
 
 Use existing book slots by default. `create-book` is maintenance-only and must be confirmed by a human. Never commit account data, cookies, Chrome profiles, provider keys, `book_id`, or `volume_id`.
 
+**Live write gate**: All commands that write to Fanqie (`upload`, `create-book`, `cleanup`) require the `--confirm-live` flag. This is a breaking change from earlier versions—automated scripts must be updated to include `--confirm-live` after human approval.
+
 `publish prep` creates a local manual-copy package under
 `06-deliverables/publish/{platform}-package/`. It does not write to Fanqie or
 any other platform.

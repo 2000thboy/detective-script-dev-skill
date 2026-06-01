@@ -12,7 +12,8 @@
     "0-100 quality score report",
     "static user preference memory",
     "multi-agent review contracts",
-    "manual publish preparation without live platform writes"
+    "manual publish preparation",
+    "live platform write with --confirm-live human approval gate"
   ],
   "entrypoint": "SKILL.md",
   "commands": [
@@ -26,9 +27,10 @@
     "wolf memory show"
   ],
   "safety": {
-    "live_platform_writes": false,
+    "live_platform_writes": true,
     "requires_human_publish_approval": true,
-    "stores_credentials": false
+    "stores_credentials": false,
+    "live_write_gate": "--confirm-live flag required"
   },
   "verification": [
     "npm run acceptance",
