@@ -35,7 +35,50 @@ agents:
     output_schema: chapter-text.md
     lifecycle: managed-by-orchestrator
 
-  # ─── Preset Experts (4 reviewers, parallel) ───────────────────────────
+  # ─── Preset Experts (6 reviewers, parallel) ───────────────────────────
+  - id: strict-reader
+    type: llm-reviewer
+    persona: |
+      你是严格读者。你的任务是评估小说的阅读体验、节奏控制和钩子设计。
+      你从普通读者的角度判断：是否读得下去、是否想继续翻页、是否有拖沓或仓促感。
+      评分标准（0-100）：95分以上为通过，低于95分必须指出具体改进点。
+    input_schema:
+      - chapter_text: 本章全文
+      - outline: approved outline
+    output_schema: review-result.json
+    dimensions:
+      - id: reading_experience
+        name: 阅读体验
+        description: 是否让人想继续读下去，是否有阅读障碍
+      - id: pacing
+        name: 节奏控制
+        description: 快慢是否得当，是否有拖沓或仓促
+      - id: hook_design
+        name: 钩子设计
+        description: 章末和关键节点是否有足够的悬念吸引力
+
+  - id: canon-checker
+    type: llm-reviewer
+    persona: |
+      你是原著一致性审查员。你的任务是检查小说是否违反原作设定、
+      角色是否 OOC（Out of Character）、世界观规则是否被破坏。
+      评分标准（0-100）：95分以上为通过，低于95分必须指出具体违规项。
+    input_schema:
+      - chapter_text: 本章全文
+      - canon_reference: 原著关键设定（用户可配）
+      - characters: characters.json
+    output_schema: review-result.json
+    dimensions:
+      - id: canon_compliance
+        name: 原作设定合规
+        description: 是否违反原作已建立的设定
+      - id: character_ooc
+        name: 角色 OOC
+        description: 角色言行是否符合其性格设定
+      - id: world_rule_violation
+        name: 世界观规则破坏
+        description: 是否违反世界观内部的规则
+
   - id: logic-checker
     type: llm-reviewer
     persona: |
@@ -43,6 +86,7 @@ agents:
       因果关系、线索铺设和推理链完整性。
       重点关注"有没有线索还没解释就被使用了"、"推理是否跳步"、
       "时间线是否有矛盾"。
+      评分标准（0-100）：95分以上为通过，低于95分必须指出具体逻辑漏洞。
     input_schema:
       - chapter_text: 本章全文
       - characters: characters.json
@@ -63,71 +107,54 @@ agents:
         name: 推理链完整性
         description: 推理过程是否有跳步或漏洞
 
-  - id: canon-checker
+  - id: ai-flavor-checker
     type: llm-reviewer
     persona: |
-      你是原著一致性审查员。你的任务是检查小说是否违反原作设定、
-      角色是否 OOC（Out of Character）、世界观规则是否被破坏。
-    input_schema:
-      - chapter_text: 本章全文
-      - canon_reference: 原著关键设定（用户可配）
-      - characters: characters.json
-    output_schema: review-result.json
-    dimensions:
-      - id: canon_compliance
-        name: 原作设定合规
-        description: 是否违反原作已建立的设定
-      - id: character_ooc
-        name: 角色 OOC
-        description: 角色言行是否符合其性格设定
-      - id: world_rule_violation
-        name: 世界观规则破坏
-        description: 是否违反世界观内部的规则
-
-  - id: oc-checker
-    type: llm-reviewer
-    persona: |
-      你是角色 OC 审查员。你的任务是检查原创角色（OC）是否抢了原著角色戏份、
-      OC 的动机是否充分、OC 与原著角色的互动是否自然。
-    input_schema:
-      - chapter_text: 本章全文
-      - characters: characters.json
-      - truth_file: truth-file.json
-    output_schema: review-result.json
-    dimensions:
-      - id: oc_motivation
-        name: OC 动机充分性
-        description: OC 的行为是否有合理的动机支撑
-      - id: oc_screen_time_balance
-        name: 戏份平衡
-        description: OC 是否抢了原著角色的戏份
-      - id: oc_interaction_naturalness
-        name: 互动自然度
-        description: OC 与原著角色的互动是否自然可信
-
-  - id: style-checker
-    type: llm-reviewer
-    persona: |
-      你是文笔审查员。你的任务是检查 AI 味（过度总结、重复三联、说教感）、
-      对话自然度、场景描写密度、节奏控制。
+      你是AI味检测专家（强制审查环节）。你的任务是识别文本中的机械感、过度总结、
+      重复三联（"不仅...而且...更重要的是..."）、说教感、模板化表达。
       特别关注"show don't tell"原则的执行情况。
+      任何看起来像AI生成而非人类写作的痕迹都要标记。
+      这是强制检查项，缺失此检查主编必须退回修订。
+      评分标准（0-100）：95分以上为通过，低于95分必须标记所有AI味段落。
     input_schema:
       - chapter_text: 本章全文
-      - user_preferences: ops/docs/user/USER.md 中的风格偏好（由主编注入）
+      - user_preferences: ~/.config/wolf/memory.json 中的风格偏好（由主编注入）
     output_schema: review-result.json
     dimensions:
       - id: ai_flavor
-        name: AI 味检测
-        description: 是否有过度总结、模板化表达、说教感
+        name: AI味检测
+        description: 是否有过度总结、模板化表达、说教感、机械感 — MANDATORY
       - id: dialogue_quality
         name: 对话质量
         description: 对话是否自然，是否符合角色性格
-      - id: pacing
-        name: 节奏控制
-        description: 快慢是否得当，是否有拖沓或仓促
       - id: show_dont_tell
         name: Show Don't Tell
         description: 是否用场景展示而非直接陈述
+
+  - id: research-usage-checker
+    type: llm-reviewer
+    persona: |
+      你是研究内容审查员（强制审查环节）。你的任务是检查作者在创作过程中引用的研究资料
+      （历史背景、专业知识、文化细节等）是否真正被使用在正文中，
+      而不是仅仅列在参考文献里。
+      重点关注"研究内容是否转化为故事细节"而非"是否提到了研究主题"。
+      这是强制检查项，缺失此检查主编必须退回修订。
+      评分标准（0-100）：95分以上为通过，低于95分必须指出哪些研究内容未被使用。
+    input_schema:
+      - chapter_text: 本章全文
+      - research_notes: 02-research/ 下的研究笔记
+      - outline: approved outline
+    output_schema: review-result.json
+    dimensions:
+      - id: research_integration
+        name: 研究内容转化度
+        description: 研究资料是否真正转化为故事细节和背景
+      - id: accuracy_usage
+        name: 准确性使用
+        description: 专业知识是否在正确场景被准确使用
+      - id: depth_vs_surface
+        name: 深度vs表面
+        description: 是深入使用还是仅提及皮毛
 
   # ─── Ad-hoc Experts (dynamically attached per project type) ──────────
   ad_hoc_experts:
@@ -151,22 +178,28 @@ agents:
   - id: editor-judge
     type: llm-judge
     persona: |
-      你是主编。你汇总所有审查员的输出，做最终裁决。
+      你是主编调度器。你汇总所有审查员的输出，做最终裁决。
       你的任务是：识别共识问题、裁决冲突意见、输出优先级排序的修改清单。
-      你参考 ops/docs/user/USER.md 中的主编偏好来做最终决策。
+      你参考 ~/.config/wolf/memory.json 中的主编偏好来做最终决策。
+      强制规则：
+      1. ai-flavor-checker 和 research-usage-checker 是强制环节。缺少任一项，必须返回 needs_revision。
+      2. 任何审查维度低于 95/100，必须进入修订清单。
+      3. 你需要为每次 needs_revision 生成 modification-list-v{N}.md。
     input_schema:
-      - all_reviews: 所有专家的 JSON 输出
+      - all_reviews: [strict-reader, canon-checker, logic-checker, ai-flavor-checker, research-usage-checker] 的 JSON 输出
       - chapter_text: 本章全文
       - truth_file: truth-file.json
-      - user_preferences: ops/docs/user/USER.md 中的偏好
+      - user_preferences: ~/.config/wolf/memory.json 中的偏好
+      - previous_verdict: 上一轮 editor-verdict.json（如有）
     output_schema: editor-verdict.json
 
 # ─── Executor Placeholders ────────────────────────────────────────────
 # User configures these via env or CLI. Examples:
 #   WOLF_EXECUTOR_EDITOR=claude
 #   WOLF_EXECUTOR_WRITER=codex
+#   WOLF_EXECUTOR_STRICT_READER=claude
+#   WOLF_EXECUTOR_CANON=deepseek
 #   WOLF_EXECUTOR_LOGIC=deepseek
-#   WOLF_EXECUTOR_CANON=glm4flash
-#   WOLF_EXECUTOR_OC=deepseek
-#   WOLF_EXECUTOR_STYLE=glm4flash
+#   WOLF_EXECUTOR_AI_FLAVOR=claude
+#   WOLF_EXECUTOR_RESEARCH=claude
 #   WOLF_EXECUTOR_GATE=local

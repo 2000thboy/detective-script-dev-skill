@@ -1,29 +1,32 @@
 {
   "project_name": "detective-script-dev",
-  "project_version": "1.0.0",
-  "current_goal": "维护一个可安装、可验收的 detective-script-dev skill 包，提供 case runner、核心诡计锁、多 agent review schema 和 Fanqie live gate。",
+  "project_version": "1.1.0",
+  "current_goal": "迭代 v1.1.0：强化流程控制、延长需求澄清阶段、强制大纲格式、6代理强制审查（含AI味/Research检查）、主编调度器、迭代修改追踪、用户偏好记忆自动更新。",
   "stage": "packaged_skill",
   "progress": 100,
   "progress_bar": "[████████████████████] 100%",
-  "total_tasks": 7,
-  "completed_tasks": 7,
+  "total_tasks": 8,
+  "completed_tasks": 8,
   "next_tasks": [
-    "按需新增真实 case",
-    "按需扩展 review/editor schema",
-    "Fanqie live action 继续保持人工确认"
+    "收集新版本的实际使用反馈",
+    "根据反馈微调需求澄清层数和内容",
+    "验证6代理审查在真实case中的效果"
   ],
   "priority": "high",
   "tags": [
     "detective-script-dev",
     "skill-package",
     "core-trick-lock",
-    "multi-case-acceptance",
-    "fanqie-live-gate"
+    "multi-agent-review",
+    "ai-flavor-check",
+    "research-usage-check",
+    "demand-clarification",
+    "outline-format-enforcement"
   ],
   "blockers": [],
-  "notes": "迁移残留和案例内容已删除。当前仓库只保留产品化 skill、runner、Fanqie adapter 和必要事实文档。",
-  "milestone": "runnable skill package",
-  "last_updated": "2026-05-29T22:30:00+08:00",
+  "notes": "v1.1.0 迭代完成。迁移残留和案例内容已删除。新增：状态感知启动流程、4层需求澄清协议、大纲格式强制验证、6代理强制审查（strict-reader/ai-flavor-checker/research-usage-checker/editor-judge）、迭代修改清单追踪、memory update 命令。",
+  "milestone": "v1.1.0 skill package with enhanced flow control",
+  "last_updated": "2026-06-01T00:00:00+08:00",
   "owner": "hy11",
   "project_type": "skill-workflow-cli"
 }

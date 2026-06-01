@@ -1,16 +1,24 @@
 {
   "name": "detective-script-dev",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "title": "Detective Script Dev",
-  "short_description": "Frontend-free detective fiction workflow with core trick locking, fairness checks, quality scoring, and manual publish prep.",
+  "short_description": "Frontend-free detective fiction workflow with state-aware launch, layered demand clarification, strict outline enforcement, mandatory 6-agent review (AI-flavor + Research-usage), core trick locking, fairness checks, quality scoring, and manual publish prep.",
   "language": "zh-CN",
   "category": "writing",
   "capabilities": [
     "deterministic case artifact protocol",
+    "state-aware launch flow with first-launch gate",
+    "layered demand clarification (no files before confirmation)",
+    "strict 4-section outline format enforcement",
     "core trick lock and writer constraints",
+    "mandatory 6-agent review with 95/100 threshold",
+    "AI-flavor detection (mandatory)",
+    "research-usage verification (mandatory)",
+    "editor-judge orchestrator",
+    "iterative refinement tracking",
     "clue fairness check before reveal",
     "0-100 quality score report",
-    "static user preference memory",
+    "static user preference memory with auto-update",
     "multi-agent review contracts",
     "manual publish preparation",
     "live platform write with --confirm-live human approval gate"
@@ -21,10 +29,15 @@
     "wolf case check <case>",
     "wolf case fair-check <case> --version vN",
     "wolf case score <case> --version vN",
+    "wolf case outline-validate <case> --outline PATH",
+    "wolf case modification-list <case> --version vN --items \"item1,item2\"",
+    "wolf case status <case>",
+    "wolf case list",
     "wolf publish prep <case> --platform fanqie --version vN",
     "wolf memory init",
     "wolf memory check",
-    "wolf memory show"
+    "wolf memory show",
+    "wolf memory update --key KEY --value VALUE"
   ],
   "safety": {
     "live_platform_writes": true,
@@ -35,6 +48,6 @@
   "verification": [
     "npm run acceptance",
     "npm test",
-    "quick_validate.py ops/skills/detective-script-dev"
+    "node src/bin/wolf-runner.js case list"
   ]
 }

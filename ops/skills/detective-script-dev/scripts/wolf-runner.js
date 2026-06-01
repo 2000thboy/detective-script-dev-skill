@@ -58,6 +58,10 @@ Commands:
   case unlock <case-name>        Release a case write lease
                                   Options: --owner NAME
   case list                      List all cases
+  case modification-list <case>  Generate modification list for iteration
+                                  Options: --version vN --items "item1,item2"
+  case outline-validate <case>   Validate outline against outline-format.md
+                                  Options: --outline PATH
   publish prep <case-name>       Generate manual publish package
                                   Options: [--platform fanqie] [--version vN]
   publish checklist <case-name>  Print manual publish checklist path
@@ -68,6 +72,8 @@ Commands:
                                   Options: [--path PATH] [--json]
   memory show                    Print static memory summary if configured
                                   Options: [--path PATH] [--json]
+  memory update                  Update a specific memory field
+                                  Options: --key KEY --value VALUE [--path PATH]
 
 Options:
   --no-write                     Do not update manifest during check
@@ -822,6 +828,75 @@ function memoryShow(args) {
   }
 }
 
+function memoryUpdate(args) {
+  const options = parseOptions(args);
+  const key = options.key;
+  const value = options.value;
+
+  if (!key || value === undefined) {
+    console.error("Error: memory update requires --key KEY --value VALUE");
+    process.exit(1);
+  }
+
+  const memoryPath = resolveMemoryPath(options.path);
+  let memory;
+  if (fs.existsSync(memoryPath)) {
+    memory = readJson(memoryPath);
+  } else {
+    memory = defaultMemoryTemplate();
+  }
+
+  const result = validateMemory(memory);
+  if (!result.ok) {
+    console.error(`Error: invalid memory at ${memoryPath}: ${result.issues.join(", ")}`);
+    process.exit(1);
+  }
+
+  // Update the key under user_profile
+  const profileKeys = new Set([
+    "preferred_style",
+    "preferred_pace",
+    "preferred_trick_type",
+    "chapter_length_target",
+    "outline_depth",
+  ]);
+
+  if (profileKeys.has(key)) {
+    if (key === "preferred_style" || key === "preferred_trick_type") {
+      if (!Array.isArray(memory.user_profile[key])) memory.user_profile[key] = [];
+      if (!memory.user_profile[key].includes(value)) {
+        memory.user_profile[key].push(value);
+      }
+    } else {
+      memory.user_profile[key] = value;
+    }
+  } else if (key === "successful_cases") {
+    if (!Array.isArray(memory.successful_cases)) memory.successful_cases = [];
+    if (!memory.successful_cases.includes(value)) {
+      memory.successful_cases.push(value);
+    }
+  } else if (key === "failure_patterns") {
+    if (!Array.isArray(memory.failure_patterns)) memory.failure_patterns = [];
+    if (!memory.failure_patterns.includes(value)) {
+      memory.failure_patterns.push(value);
+    }
+  } else {
+    // Allow arbitrary keys under user_profile
+    memory.user_profile[key] = value;
+  }
+
+  memory.updated_at = new Date().toISOString();
+  fs.mkdirSync(path.dirname(memoryPath), { recursive: true });
+  writeJson(memoryPath, memory);
+
+  if (options.json) {
+    console.log(JSON.stringify({ updated: true, key, value, path: memoryPath }, null, 2));
+  } else {
+    console.log(`Memory updated: ${key} = ${value}`);
+    console.log(`Path: ${memoryPath}`);
+  }
+}
+
 function loadMemorySummary() {
   const memoryPath = resolveMemoryPath();
   if (!fs.existsSync(memoryPath)) {
@@ -1280,6 +1355,202 @@ function listCases() {
   for (const name of cases) {
     console.log(`  - ${name}`);
   }
+}
+
+// ─── Modification List ─────────────────────────────────────────
+
+function modificationListCase(caseName, args) {
+  const options = parseOptions(args);
+  const caseDir = requireCaseDir(caseName);
+  const state = loadState(caseDir, caseName);
+  const version = normalizeVersion(options.version) || state.current_version || detectCaseVersions(caseDir).highest || "v1";
+  const items = (options.items || "").split(",").filter(Boolean);
+
+  const reviewDir = path.join(caseDir, "05-reviews", version);
+  fs.mkdirSync(reviewDir, { recursive: true });
+
+  // Detect iteration number
+  const existingLists = fs.existsSync(reviewDir)
+    ? fs.readdirSync(reviewDir).filter((f) => f.startsWith("modification-list-"))
+    : [];
+  const iteration = existingLists.length + 1;
+
+  const lines = [
+    `# Modification List — ${caseName} ${version} Iteration ${iteration}`,
+    "",
+    `## Trigger`,
+    "",
+    `- Editor verdict: needs_revision`,
+    `- Iteration: ${iteration}`,
+    `- Generated at: ${new Date().toISOString()}`,
+    "",
+    "## Modification Items",
+    "",
+    "| # | Priority | Item | Reason | Source | Location | Status |",
+    "|---|----------|------|--------|--------|----------|--------|",
+  ];
+
+  for (let i = 0; i < items.length; i++) {
+    lines.push(`| ${i + 1} | P1 | ${items[i]} | pending | editor-judge | TBD | pending |`);
+  }
+
+  if (items.length === 0) {
+    lines.push("| — | — | (no items provided, populate from editor-verdict.json) | — | — | — | — |");
+  }
+
+  lines.push(
+    "",
+    "## Revision Record",
+    "",
+    "| Round | Changes | Verification |",
+    "|-------|---------|--------------|",
+    `| ${iteration} | (pending) | (pending) |`,
+    ""
+  );
+
+  const fileName = `modification-list-${version}-iter${iteration}.md`;
+  const filePath = path.join(reviewDir, fileName);
+  fs.writeFileSync(filePath, lines.join("\n"), "utf-8");
+
+  updateManifest(caseDir, {
+    lastModificationList: {
+      version,
+      iteration,
+      path: path.relative(caseDir, filePath).replace(/\\/g, "/"),
+      at: new Date().toISOString(),
+    },
+  });
+
+  console.log(`Modification list created: ${path.relative(CWD, filePath).replace(/\\/g, "/")}`);
+  console.log(`Iteration: ${iteration}`);
+}
+
+// ─── Outline Validate ──────────────────────────────────────────
+
+function outlineValidateCase(caseName, args) {
+  const options = parseOptions(args);
+  const caseDir = requireCaseDir(caseName);
+  const state = loadState(caseDir, caseName);
+  const version = normalizeVersion(options.version) || state.current_version || detectCaseVersions(caseDir).highest || "v1";
+
+  const outlinePath = options.outline
+    ? path.resolve(CWD, options.outline)
+    : path.join(caseDir, "03-outline", `${version}.md`);
+
+  if (!fs.existsSync(outlinePath)) {
+    console.error(`Error: outline not found at ${outlinePath}`);
+    process.exit(1);
+  }
+
+  const content = fs.readFileSync(outlinePath, "utf-8");
+  const report = validateOutline(content);
+
+  const reviewDir = path.join(caseDir, "05-reviews", version);
+  fs.mkdirSync(reviewDir, { recursive: true });
+  writeJson(path.join(reviewDir, "outline-validation.json"), {
+    case: caseName,
+    version,
+    outline: path.relative(CWD, outlinePath).replace(/\\/g, "/"),
+    status: report.ok ? "PASS" : "FAIL",
+    checks: report.checks,
+    violations: report.violations,
+    created_at: new Date().toISOString(),
+  });
+
+  if (report.ok) {
+    console.log(`Outline validation: PASS`);
+    console.log(`All ${report.checks.length} checks passed`);
+  } else {
+    console.log(`Outline validation: FAIL`);
+    console.log("Violations:");
+    for (const v of report.violations) {
+      console.log(`  - ${v}`);
+    }
+    console.log(`\nChecks: ${report.checks.filter((c) => c.status === "PASS").length}/${report.checks.length} passed`);
+  }
+
+  process.exit(report.ok ? 0 : 1);
+}
+
+function validateOutline(content) {
+  const checks = [];
+  const violations = [];
+
+  // Check 1: 一句话故事
+  const oneLinerMatch = content.match(/##?\s*一句话故事[\s\S]*?\n\s*([^#\n][^\n]{10,150})/i);
+  const hasOneLiner = oneLinerMatch && oneLinerMatch[1].trim().length >= 10;
+  checks.push({ check: "section:一句话故事", status: hasOneLiner ? "PASS" : "FAIL" });
+  if (!hasOneLiner) violations.push("缺少'一句话故事'或内容过短（需≥10字）");
+
+  // Check 2: 故事简介 (200-500 chars)
+  const synopsisMatch = content.match(/##?\s*故事简介[\s\S]*?\n\s*([^#\n][^#]*)/i);
+  let synopsisLength = 0;
+  if (synopsisMatch) {
+    synopsisLength = synopsisMatch[1].replace(/\s/g, "").length;
+  }
+  const synopsisOk = synopsisLength >= 200 && synopsisLength <= 500;
+  checks.push({ check: "section:故事简介", status: synopsisOk ? "PASS" : "FAIL" });
+  if (synopsisLength < 200) violations.push(`故事简介过短: ${synopsisLength}字（需≥200字）`);
+  if (synopsisLength > 500) violations.push(`故事简介过长: ${synopsisLength}字（需≤500字）`);
+  if (synopsisLength === 0) violations.push("缺少'故事简介'部分");
+
+  // Check 3: 故事细纲 (5000-10000 chars)
+  const outlineMatch = content.match(/##?\s*故事细纲[\s\S]*?\n\s*([^#\n][^#]*)/i);
+  let outlineLength = 0;
+  if (outlineMatch) {
+    const startIdx = content.indexOf(outlineMatch[0]);
+    const endIdx = content.search(/##?\s*人物简介/i);
+    const outlineSection = endIdx > startIdx ? content.slice(startIdx, endIdx) : content.slice(startIdx);
+    outlineLength = outlineSection.replace(/\s/g, "").length;
+  }
+  const outlineOk = outlineLength >= 5000 && outlineLength <= 10000;
+  checks.push({ check: "section:故事细纲", status: outlineOk ? "PASS" : "FAIL" });
+  if (outlineLength < 5000) violations.push(`故事细纲过短: ${outlineLength}字（需≥5000字）`);
+  if (outlineLength > 10000) violations.push(`故事细纲过长: ${outlineLength}字（需≤10000字）`);
+  if (outlineLength === 0) violations.push("缺少'故事细纲'部分");
+
+  // Check 4: 人物简介
+  const charMatch = content.match(/##?\s*人物简介/i);
+  const hasChars = !!charMatch;
+  checks.push({ check: "section:人物简介", status: hasChars ? "PASS" : "WARN" });
+  if (!hasChars) violations.push("缺少'人物简介'部分（建议添加）");
+
+  // Check 5: Structure order
+  const orderCheck = checkOutlineStructure(content);
+  checks.push({ check: "structure:section_order", status: orderCheck.ok ? "PASS" : "FAIL" });
+  if (!orderCheck.ok) violations.push(`大纲结构顺序错误: ${orderCheck.issue}`);
+
+  return {
+    ok: violations.filter((v) => !v.includes("建议")).length === 0,
+    checks,
+    violations,
+  };
+}
+
+function checkOutlineStructure(content) {
+  const sections = ["一句话故事", "故事简介", "故事细纲", "人物简介"];
+  const positions = sections.map((s) => {
+    const match = content.match(new RegExp(`##?\\s*${s}`, "i"));
+    return match ? content.indexOf(match[0]) : -1;
+  });
+
+  const found = positions.filter((p) => p >= 0);
+  if (found.length < 3) {
+    return { ok: false, issue: `仅找到 ${found.length}/4 个核心部分` };
+  }
+
+  // Check ascending order
+  let lastPos = -1;
+  for (const pos of positions) {
+    if (pos >= 0) {
+      if (pos < lastPos) {
+        return { ok: false, issue: "核心部分未按正确顺序排列" };
+      }
+      lastPos = pos;
+    }
+  }
+
+  return { ok: true, issue: "" };
 }
 
 // ─── Publish Prep ─────────────────────────────────────────────
@@ -1899,6 +2170,8 @@ function main() {
     else if (subcmd === "lock") lockCase(name, args.slice(3));
     else if (subcmd === "unlock") unlockCase(name, args.slice(3));
     else if (subcmd === "list") listCases();
+    else if (subcmd === "modification-list") modificationListCase(name, args.slice(3));
+    else if (subcmd === "outline-validate") outlineValidateCase(name, args.slice(3));
     else {
       console.error(`Unknown case subcommand: ${subcmd}`);
       process.exit(1);
@@ -1914,6 +2187,7 @@ function main() {
     if (subcmd === "init") memoryInit(args.slice(2));
     else if (subcmd === "check") memoryCheck(args.slice(2));
     else if (subcmd === "show") memoryShow(args.slice(2));
+    else if (subcmd === "update") memoryUpdate(args.slice(2));
     else {
       console.error(`Unknown memory subcommand: ${subcmd}`);
       process.exit(1);

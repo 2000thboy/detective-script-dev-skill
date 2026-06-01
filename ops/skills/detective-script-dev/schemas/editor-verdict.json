@@ -22,6 +22,19 @@
     "prompt_version": { "type": "string" },
     "created_at": { "type": "string" },
     "derived_from_lock_hash": { "type": "string" },
+    "iteration_number": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Current iteration count (1-based)"
+    },
+    "previous_verdict_reference": {
+      "type": "string",
+      "description": "Reference to previous editor-verdict.json path"
+    },
+    "modification_list_path": {
+      "type": "string",
+      "description": "Path to modification-list-v{N}-iter{M}.md for this iteration"
+    },
     "consensus_issues": {
       "type": "array",
       "items": {
