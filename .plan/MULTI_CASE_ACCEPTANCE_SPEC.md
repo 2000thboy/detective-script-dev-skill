@@ -9,15 +9,14 @@
 - Modify `ops/skills/detective-script-dev/scripts/wolf-runner.js` — add promote, recover, agent-start, agent-finish, brief, and node-stage commands; harden check for version drift, fused archive snapshots, and review/editor JSON schema.
 - Modify `src/adapters/fanqie/fanqie-cli.js` — require `--confirm-live` before live write commands.
 - Modify `ops/skills/detective-script-dev/scripts/fanqie-cli.js` — mirror the same live gate for packaged skill use.
-- Modify `ops/skills/detective-script-dev/scripts/acceptance-check.js` — split acceptance into seven independent scenarios covering real regression, base lifecycle, locks, fuse archive, v12 promotion, schema blocking, and Fanqie live gate.
-- Add fairness-check acceptance scenarios for locked-room, alibi, and social-motive cases so the product is not validated only by HYOUKA-GZ.
+- Modify `ops/skills/detective-script-dev/scripts/acceptance-check.js` — split acceptance into independent scenarios covering packaged regression, base lifecycle, locks, fuse archive, v12 promotion, schema blocking, and Fanqie live gate.
+- Add fairness-check acceptance scenarios for locked-room, alibi, and social-motive cases so the product is validated without a bundled user case.
 
 ## Why
 Move the runner from a single-case smoke baseline to reproducible multi-case acceptance for high-frequency multi-agent detective-script production.
 
 ## Acceptance Criteria
-- [ ] `npm run acceptance` runs all seven scenario functions and fails on any scenario failure.
-- [ ] `case check HYOUKA-GZ --no-write` passes and detects `v10`.
+- [ ] `npm run acceptance` runs all scenario functions and fails on any scenario failure.
 - [ ] Synthetic base case can initialize and pass before `core_trick.locked=true`.
 - [ ] Lock conflict, unlock, and relock behavior is deterministic.
 - [ ] Three rollbacks fuse a case, write an archive snapshot, and block rollback/promote until manual recover.

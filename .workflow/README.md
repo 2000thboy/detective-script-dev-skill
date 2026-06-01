@@ -1,6 +1,6 @@
 # Workflow Entry
 
-Project version: 1.0.0
+Project version: 1.1.0
 
 This repo now exposes one active workflow surface: the packaged `detective-script-dev` skill and its runner commands.
 
@@ -9,8 +9,8 @@ This repo now exposes one active workflow surface: the packaged `detective-scrip
 ```bash
 npm test
 npm run acceptance
+npm pack --dry-run --json
 node src/bin/wolf-runner.js case list
-node src/bin/wolf-runner.js case check HYOUKA-GZ --no-write
 ```
 
 ## Skill Install Targets

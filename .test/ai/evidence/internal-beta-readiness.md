@@ -16,17 +16,14 @@ python C:\Users\hy11\.codex\skills\.system\skill-creator\scripts\quick_validate.
 ## Results
 
 - Acceptance: 15 scenarios passed.
-- HYOUKA-GZ case check: PASS, highest version `v10`.
-- HYOUKA-GZ fairness: PASS.
-- HYOUKA-GZ quality score: 94/100, verdict `pass`.
+- Historical HYOUKA-GZ evidence existed at the time of this 2026-05-30 report, but it is no longer an active distribution-package gate.
 - Npm dry-run package: 27 files, excludes `.omc/` and full case drafts.
 - Trae Solo installed skill: valid.
 - WorkBuddy installed skill: valid.
 
 ## Evidence Files
 
-- `content/cases/HYOUKA-GZ/05-reviews/v10/fairness-report.md`
-- `content/cases/HYOUKA-GZ/05-reviews/v10/quality-score.md`
+- Historical HYOUKA-GZ case evidence is not retained in the current distribution package.
 - `ops/skills/detective-script-dev/marketplace.json`
 - `ops/skills/detective-script-dev/references/beta-acceptance.md`
 

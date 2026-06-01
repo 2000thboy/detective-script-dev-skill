@@ -1,6 +1,6 @@
 # SPEC — detective-script-dev Skill Package
 
-Project version: 1.0.0
+Project version: 1.1.0
 
 > Version: 6.0 | Date: 2026-05-29
 
@@ -12,7 +12,7 @@ detective-script-dev/
   .plan/      PRD, SPEC, CHECKLIST, acceptance spec
   .test/      AI/user evidence sandbox
   .workflow/  operator entry
-  content/    active regression case
+  content/    optional user workspace, not bundled with this package
   ops/        packaged skill
   src/        runnable repo entrypoints
 ```
@@ -50,11 +50,7 @@ Case-local `archive/` is not part of the retained baseline after migration clean
 npm test
 npm run acceptance
 node src/bin/wolf-runner.js case list
-node src/bin/wolf-runner.js case check HYOUKA-GZ --no-write
-node src/bin/wolf-runner.js case fair-check HYOUKA-GZ --version v10
-node src/bin/wolf-runner.js case score HYOUKA-GZ --version v10
-node src/bin/wolf-runner.js publish prep HYOUKA-GZ --platform fanqie --version v10
-node src/bin/wolf-runner.js memory check
+npm pack --dry-run --json
 python C:\Users\hy11\.codex\skills\.system\skill-creator\scripts\quick_validate.py ops\skills\detective-script-dev
 ```
 
@@ -142,8 +138,8 @@ Evidence roots:
 
 - AI self-check evidence: `.test/ai/evidence/`
 - User/internal beta evidence: `.test/user/evidence/`
-- Current HYOUKA fairness report: `content/cases/HYOUKA-GZ/05-reviews/v10/fairness-report.md`
-- Current HYOUKA quality report: `content/cases/HYOUKA-GZ/05-reviews/v10/quality-score.md`
+- Acceptance scenario evidence: `npm run acceptance`
+- Package contents evidence: `npm pack --dry-run --json`
 
 ## Capability Inventory And Ownership
 
@@ -286,4 +282,3 @@ Do not claim product-level readiness unless P0/P1 gates pass:
 - Fairness-check acceptance covers locked-room, alibi, and social-motive cases.
 - Quality score and memory schema acceptance work.
 - Distribution materials acceptance works.
-- HYOUKA-GZ regression still passes.

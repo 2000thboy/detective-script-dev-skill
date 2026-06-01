@@ -2,8 +2,8 @@
 /**
  * detective-script-dev multi-case acceptance.
  *
- * Synthetic cases are created under the OS temp directory. HYOUKA-GZ is the
- * only real repo case used by this suite.
+ * Synthetic cases are created under the OS temp directory. The suite does not
+ * rely on a bundled repo case.
  */
 
 const assert = require("assert");
@@ -108,6 +108,7 @@ function createVersionArtifacts(root, name, maxVersion) {
 function prepareFairnessCase(root, name, clues, draft) {
   initCase(root, name);
   lockCoreTrick(root, name);
+  run([runner, "case", "draft-start", name], root);
   const truthPath = path.join(caseDir(root, name), "00-meta", "truth-file.json");
   const truth = readJson(truthPath);
   truth.clues = clues;
@@ -429,7 +430,9 @@ function assertDistributionMaterials() {
   const marketplace = readJson(path.join(repoRoot, "ops", "skills", "detective-script-dev", "marketplace.json"));
   assert.strictEqual(marketplace.name, "detective-script-dev");
   assert.strictEqual(marketplace.version, "1.1.0");
-  assert.strictEqual(marketplace.safety.live_platform_writes, false);
+  assert.strictEqual(marketplace.safety.live_platform_writes, true);
+  assert.strictEqual(marketplace.safety.requires_human_publish_approval, true);
+  assert.match(marketplace.safety.live_write_gate, /--confirm-live/);
   assert.ok(marketplace.capabilities.includes("clue fairness check before reveal"));
   assert.ok(marketplace.capabilities.includes("AI-flavor detection (mandatory)"));
   assert.ok(marketplace.capabilities.includes("research-usage verification (mandatory)"));

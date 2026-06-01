@@ -14,6 +14,7 @@
 | Delete untracked `archive/`, `content/knowledge/`, `ops/docs/`, `ops/github/`, `ops/workflows/` | Done |
 | Delete `ops/legacy/` runner | Done |
 | Delete case-local `content/cases/HYOUKA-GZ/archive/` | Done |
+| Remove active HYOUKA-GZ verification claims from distribution-package docs | Done |
 | Update `.plan`, `.kit`, `.workflow`, and `package.json` to remove residual references | Done |
 
 ## Verification
@@ -22,11 +23,7 @@
 |---------|----------|
 | `npm test` | PASS |
 | `npm run acceptance` | runner, Fanqie gate, fairness, and wolf alias scenarios PASS |
-| `node src/bin/wolf-runner.js case check HYOUKA-GZ --no-write` | PASS, highest version `v10` |
-| `node src/bin/wolf-runner.js case fair-check HYOUKA-GZ --version v10` | PASS/WARN/BLOCKED with report written under `05-reviews/v10/` |
-| `node src/bin/wolf-runner.js case score HYOUKA-GZ --version v10` | Writes 0-100 quality score under `05-reviews/v10/` |
-| `node src/bin/wolf-runner.js publish prep HYOUKA-GZ --platform fanqie --version v10` | Creates local manual-copy package only |
-| `node src/bin/wolf-runner.js memory check` | Validates optional `~/.config/wolf/memory.json` when present |
+| `node src/bin/wolf-runner.js case list` | PASS; no bundled cases is valid for the distribution package |
 | `marketplace.json` and `references/beta-acceptance.md` | Local distribution and beta materials exist; no external submission claimed |
 | `npm pack --dry-run --json` | Package excludes `.omc/` and full case drafts; includes skill, runner, adapter, and docs |
 | `quick_validate.py ops\skills\detective-script-dev` | Skill is valid |

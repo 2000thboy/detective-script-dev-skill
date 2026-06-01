@@ -1,6 +1,6 @@
 # AGENTS.md — detective-script-dev
 
-Project version: 1.0.0
+Project version: 1.1.0
 
 ## Current Direction
 
@@ -18,7 +18,7 @@ This repository is **detective-script-dev**: a frontend-free detective fiction s
 |------|------|
 | Case runner | `src/bin/wolf-runner.js` |
 | Primary skill package | `ops/skills/detective-script-dev/` |
-| Case artifacts | `content/cases/{case}/` |
+| User case artifacts | `content/cases/{case}/` when created by a user or host project |
 | Workflow entry | `.workflow/README.md` |
 | Fanqie adapter | `src/adapters/fanqie/fanqie-cli.js` |
 | Test sandbox | `.test/` |
@@ -48,7 +48,6 @@ npm test
 npm run acceptance
 npm pack --dry-run --json
 node src/bin/wolf-runner.js case list
-node src/bin/wolf-runner.js case check HYOUKA-GZ
 ```
 
 If `case check` writes `content/cases/{case}/.case/manifest.json`, keep or revert that runtime timestamp intentionally; do not leave it accidental.

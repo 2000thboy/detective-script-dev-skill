@@ -19,6 +19,20 @@
 
 ---
 
+## 当前包状态
+
+这个仓库是可分发的 Skill 包，不内置活跃的 `content/cases/` 回归案例。用户或宿主项目运行工作流时，才会创建自己的 case 文件夹。
+
+当前验收以语法检查、多案例 acceptance harness 和 npm dry-run 打包内容为准：
+
+```bash
+npm test
+npm run acceptance
+npm pack --dry-run --json
+```
+
+---
+
 ## 📦 文件说明
 
 | 文件/文件夹 | 是什么 |
@@ -27,7 +41,7 @@
 | `src/` | 程序代码（运行命令用） |
 | `ops/skills/detective-script-dev/` | 打包好的 Skill 文件 |
 | `.plan/` | 产品规划（PRD、技术规格、检查清单） |
-| `content/cases/` | 你的小说案子都放这里 |
+| `content/cases/` | 用户创建案子后的默认工作区，不随分发包内置 |
 
 > **关于命名**：GitHub 仓库加了 `-skill` 后缀（`detective-script-dev-skill`），方便区分。项目内部统一叫 `detective-script-dev`。
 
@@ -46,6 +60,8 @@ cd detective-script-dev-skill
 
 # 检查是否正常
 npm test
+npm run acceptance
+npm pack --dry-run --json
 ```
 
 ### 第 2 步：创建新案子
@@ -123,7 +139,7 @@ node src/bin/wolf-runner.js case score 案子名称 --version v1
 node src/bin/wolf-runner.js publish prep 案子名称 --platform fanqie --version v1
 ```
 
-**⚠️ 注意**：真正上传到番茄小说需要加 `--confirm-live` 参数，工具不会自动发布。
+**注意**：真正上传到番茄小说需要加 `--confirm-live` 参数，工具不会自动发布。
 
 ---
 

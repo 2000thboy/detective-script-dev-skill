@@ -17,7 +17,8 @@ Provide a local skill that helps produce and review detective fiction cases with
 | Skill package | `ops/skills/detective-script-dev/` |
 | Repo runner entry | `src/bin/wolf-runner.js` |
 | Fanqie adapter | `src/adapters/fanqie/fanqie-cli.js` |
-| HYOUKA regression case | `content/cases/HYOUKA-GZ/` |
+| Acceptance scenarios | `ops/skills/detective-script-dev/scripts/acceptance-check.js` |
+| Optional user cases | `content/cases/{case}/` in a host workspace |
 | Product docs | `README.md`, `AGENTS.md`, `.plan/`, `.kit/`, `.workflow/` |
 
 ## Non-goals
