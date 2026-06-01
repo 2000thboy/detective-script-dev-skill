@@ -3,7 +3,7 @@
   "title": "Expert Review Result",
   "description": "Structured output from a review agent",
   "type": "object",
-  "required": ["reviewer_id", "chapter", "dimensions", "overall_verdict", "provider", "model", "owner", "prompt_version", "created_at"],
+  "required": ["reviewer_id", "chapter", "dimensions", "overall_verdict", "overall_score", "provider", "model", "owner", "prompt_version", "created_at"],
   "properties": {
     "reviewer_id": {
       "type": "string",
@@ -17,9 +17,15 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["name", "verdict"],
+        "required": ["name", "verdict", "score"],
         "properties": {
           "name": { "type": "string" },
+          "score": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100,
+            "description": "0-100 score for this dimension"
+          },
           "verdict": {
             "type": "string",
             "enum": ["pass", "fail"]
@@ -40,9 +46,20 @@
         }
       }
     },
+    "overall_score": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100,
+      "description": "Overall 0-100 score"
+    },
     "overall_verdict": {
       "type": "string",
       "enum": ["pass", "needs_revision"]
+    },
+    "pass_threshold": {
+      "type": "number",
+      "default": 95,
+      "description": "Passing threshold for this review"
     },
     "provider": { "type": "string" },
     "model": { "type": "string" },

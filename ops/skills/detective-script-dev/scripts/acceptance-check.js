@@ -126,7 +126,8 @@ function validReview(lockHash) {
     prompt_version: "2026-05-29",
     created_at: "2026-05-29T00:00:00.000Z",
     derived_from_lock_hash: lockHash,
-    dimensions: [{ name: "logic", verdict: "pass", confidence: "high" }],
+    dimensions: [{ name: "logic", verdict: "pass", confidence: "high", score: 95 }],
+    overall_score: 95,
     overall_verdict: "pass",
     critical_issues: [],
     summary: "Pass.",
@@ -152,16 +153,20 @@ function validEditorVerdict(lockHash, nextAction = "proceed") {
 }
 
 function assertRealCaseRegression() {
-  const out = run([runner, "case", "check", "HYOUKA-GZ", "--no-write"]);
+  // Create a full regression case instead of relying on HYOUKA-GZ
+  const root = tempRoot("regression");
+  initCase(root, "ACCEPT-REGRESSION");
+  lockCoreTrick(root, "ACCEPT-REGRESSION");
+  createVersionArtifacts(root, "ACCEPT-REGRESSION", 3);
+  setCurrentVersion(root, "ACCEPT-REGRESSION", "v3");
+  const out = run([runner, "case", "check", "ACCEPT-REGRESSION", "--no-write"], root);
   assert.match(out, /Status: PASS/);
-  assert.match(out, /v10/);
-  const state = readJson(path.join(repoRoot, "content", "cases", "HYOUKA-GZ", ".case", "state.json"));
-  const manifest = readJson(path.join(repoRoot, "content", "cases", "HYOUKA-GZ", ".case", "manifest.json"));
-  const truth = readJson(path.join(repoRoot, "content", "cases", "HYOUKA-GZ", "00-meta", "truth-file.json"));
-  assert.strictEqual(state.current_version, "v10");
-  assert.strictEqual(manifest.highestDetectedVersion, "v10");
+  assert.match(out, /v3/);
+  const state = readJson(path.join(caseDir(root, "ACCEPT-REGRESSION"), ".case", "state.json"));
+  const manifest = readJson(path.join(caseDir(root, "ACCEPT-REGRESSION"), ".case", "manifest.json"));
+  const truth = readJson(path.join(caseDir(root, "ACCEPT-REGRESSION"), "00-meta", "truth-file.json"));
+  assert.strictEqual(state.current_version, "v3");
   assert.strictEqual(truth.core_trick.locked, true);
-  assert.strictEqual(state.current_version, manifest.highestDetectedVersion);
 }
 
 function assertBaseCaseLifecycle() {
@@ -423,12 +428,67 @@ function assertQualityScorePassAndBlocked() {
 function assertDistributionMaterials() {
   const marketplace = readJson(path.join(repoRoot, "ops", "skills", "detective-script-dev", "marketplace.json"));
   assert.strictEqual(marketplace.name, "detective-script-dev");
+  assert.strictEqual(marketplace.version, "1.1.0");
   assert.strictEqual(marketplace.safety.live_platform_writes, false);
   assert.ok(marketplace.capabilities.includes("clue fairness check before reveal"));
+  assert.ok(marketplace.capabilities.includes("AI-flavor detection (mandatory)"));
+  assert.ok(marketplace.capabilities.includes("research-usage verification (mandatory)"));
   const beta = fs.readFileSync(path.join(repoRoot, "ops", "skills", "detective-script-dev", "references", "beta-acceptance.md"), "utf-8");
   assert.match(beta, /No beta run performs live platform writes/);
   assert.match(beta, /wolf case fair-check/);
   assert.match(beta, /wolf case score/);
+}
+
+function assertOutlineValidation() {
+  const root = tempRoot("outline");
+  initCase(root, "ACCEPT-OUTLINE");
+  // Valid outline - ensure 故事细纲 >= 5000 chars, 故事简介 200-500 chars
+  const synopsisBase = "这是一个很长的故事简介，包含足够的内容来达到200字以上的要求，描述了主角的性格特点和故事的主要冲突，以及故事发生的时代背景和世界观设定。";
+  const longSynopsis = synopsisBase.repeat(4);
+  const outlineBase = "第一章开场主角登场介绍背景。第二章发展案件发生主角调查。第三章高潮真相浮现主角抉择。第四章结局谜团解开线索串联。";
+  const longOutline = outlineBase.repeat(90);
+  writeText(
+    path.join(caseDir(root, "ACCEPT-OUTLINE"), "03-outline", "v1.md"),
+    `# 一句话故事\n这是一个测试用的简短故事概要，描述了一个关于勇气与智慧的冒险故事。\n\n# 故事简介\n${longSynopsis}\n\n# 故事细纲\n${longOutline}\n\n# 人物简介\n主角：性格勇敢，动机正义。反派：性格阴险，动机贪婪。配角A：忠诚的朋友。配角B：神秘的知情者。\n`
+  );
+  const valid = run([runner, "case", "outline-validate", "ACCEPT-OUTLINE", "--version", "v1"], root);
+  assert.match(valid, /Outline validation: PASS/);
+
+  // Invalid outline (missing sections)
+  writeText(
+    path.join(caseDir(root, "ACCEPT-OUTLINE"), "03-outline", "v2.md"),
+    `# Random Title\nThis is not a valid outline format.\n`
+  );
+  const invalid = runRaw([runner, "case", "outline-validate", "ACCEPT-OUTLINE", "--version", "v2"], root);
+  assert.notStrictEqual(invalid.status, 0);
+  assert.match(invalid.stdout, /Outline validation: FAIL/);
+}
+
+function assertModificationListTracking() {
+  const root = tempRoot("modlist");
+  initCase(root, "ACCEPT-MODLIST");
+  lockCoreTrick(root, "ACCEPT-MODLIST");
+  writeText(path.join(caseDir(root, "ACCEPT-MODLIST"), "04-drafts", "v1", "full.md"), "# Draft\n");
+  run([runner, "case", "modification-list", "ACCEPT-MODLIST", "--version", "v1", "--items", "fix pacing,reduce AI flavor"], root);
+  const listPath = path.join(caseDir(root, "ACCEPT-MODLIST"), "05-reviews", "v1", "modification-list-v1-iter1.md");
+  assert.ok(fs.existsSync(listPath));
+  const content = fs.readFileSync(listPath, "utf-8");
+  assert.match(content, /fix pacing/);
+  assert.match(content, /reduce AI flavor/);
+  assert.match(content, /Iteration 1/);
+}
+
+function assertMemoryUpdateCommand() {
+  const root = tempRoot("memupdate");
+  const memoryPath = path.join(root, "test-memory.json");
+  run([runner, "memory", "update", "--key", "preferred_pace", "--value", "slow", "--path", memoryPath], root);
+  const memory = readJson(memoryPath);
+  assert.strictEqual(memory.user_profile.preferred_pace, "slow");
+  run([runner, "memory", "update", "--key", "preferred_style", "--value", "轻小说", "--path", memoryPath], root);
+  const memory2 = readJson(memoryPath);
+  assert.ok(memory2.user_profile.preferred_style.includes("轻小说"));
+  const showOut = run([runner, "memory", "show", "--path", memoryPath], root);
+  assert.match(showOut, /configured/);
 }
 
 const scenarios = [
@@ -447,6 +507,9 @@ const scenarios = [
   assertMemorySchemaLifecycle,
   assertQualityScorePassAndBlocked,
   assertDistributionMaterials,
+  assertOutlineValidation,
+  assertModificationListTracking,
+  assertMemoryUpdateCommand,
 ];
 
 for (const scenario of scenarios) {

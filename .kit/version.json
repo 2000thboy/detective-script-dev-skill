@@ -1,10 +1,10 @@
 {
   "schema": "kit-project-version-v1",
   "project": "detective-script-dev",
-  "version": "1.0.0",
-  "project_version": "1.0.0",
+  "version": "1.1.0",
+  "project_version": "1.1.0",
   "layout_version": "skill-package-v1",
-  "updated_at": "2026-05-29T22:30:00+08:00",
+  "updated_at": "2026-06-01T00:00:00+08:00",
   "active_roots": [
     ".kit",
     ".plan",
