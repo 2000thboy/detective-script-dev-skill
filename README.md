@@ -1,104 +1,152 @@
 # detective-script-dev
 
-Project version: 1.0.0
+**版本**: 1.1.0
 
-> Frontend-free detective fiction skill with deterministic artifacts, core trick locking, multi-agent review contracts, and optional Fanqie publishing.
+> 一个帮你写侦探小说的工具。像搭积木一样，把灵感变成完整的故事，还能自动检查故事有没有漏洞。
 
-## What
+---
 
-detective-script-dev is the productized shape of `script-dev`: a local skill package for creating, reviewing, packaging, publishing, and reporting mystery fiction workflows.
+## 🚀 3 分钟快速上手
 
-- Root is intentionally small and product-facing.
-- Writing workbench/frontend migration leftovers have been deleted.
-- Fanqie operations are adapter commands, not the core product.
-- Live Fanqie operations always stay behind human approval.
-
-## Root Map
-
-```text
-.kit/       KIT project facts and version metadata
-.plan/      PRD, SPEC, CHECKLIST, PROGRESS
-.workflow/  operator entry docs
-src/        runnable code: CLI, adapters, shared libraries
-content/    active regression cases
-ops/        packaged skill
-```
-
-Runtime folders such as `data/`, `artifacts/`, `.codex-tmp/`, and `node_modules/` are ignored operational state, not product entry points.
-
-## Quick Start
-
+**第 1 步：检查工具是否正常**
 ```bash
 npm test
-node src/bin/wolf-runner.js case fair-check HYOUKA-GZ --version v10
-node src/bin/wolf-runner.js case score HYOUKA-GZ --version v10
-node src/bin/wolf-runner.js publish prep HYOUKA-GZ --platform fanqie --version v10
-node src/bin/wolf-runner.js memory check
-node src/bin/wolf-runner.js case list
-node src/bin/wolf-runner.js case check HYOUKA-GZ
 ```
+看到一堆绿色的 PASS 就说明没问题。
 
-## Active Entrypoints
+**第 2 步：创建一个新案子**
+```bash
+node src/bin/wolf-runner.js case init 我的第一个案子
+```
+这会帮你创建一个标准格式的文件夹，里面已经有模板了。
 
-| Area | Path |
-|------|------|
-| Case runner | `src/bin/wolf-runner.js` |
-| Fanqie adapter | `src/adapters/fanqie/fanqie-cli.js` |
-| Primary skill package | `ops/skills/detective-script-dev/` |
-| Active cases | `content/cases/` |
+**第 3 步：检查案子是否合格**
+```bash
+node src/bin/wolf-runner.js case check 我的第一个案子
+```
+工具会检查你的文件夹格式对不对、文件编码对不对、有没有漏掉什么。
 
-## Case Structure
+---
+
+## 📖 这是什么？
+
+detective-script-dev 是一个**侦探小说写作助手**。
+
+想象一下：你想写一个密室杀人案的侦探故事，但不知道怎么安排线索、怎么让推理过程合理、怎么保证读者在真相揭晓前已经看到了所有关键线索。
+
+这个工具就是帮你解决这些问题的：
+
+| 你头疼的问题 | 这个工具怎么帮你 |
+|-------------|----------------|
+| 故事写到一半忘了前面埋了什么伏笔 | 自动记录所有线索，检查有没有漏掉 |
+| 推理过程有漏洞，读者能找出 bug | 多个 AI 审校员同时检查逻辑 |
+| 凶手身份太容易猜 / 太难猜 | 评分系统告诉你故事难度合不合适 |
+| 写好的小说想发到番茄小说 | 一键生成发布包，不用手动复制粘贴 |
+
+---
+
+## 📁 案子的文件夹长什么样？
+
+每个案子都是一个文件夹，里面按步骤分了 7 个区域：
 
 ```text
-content/cases/{case}/
-  .case/
-  00-meta/
-  01-brief/
-  02-research/
-  03-outline/
-  04-drafts/
-  05-reviews/
-  06-deliverables/
+content/cases/我的案子/
+  .case/          ← 工具自动记录的状态（不用手动改）
+  00-meta/        ← 故事核心设定：凶手是谁、怎么作案、关键线索
+  01-brief/       ← 故事简介：背景、人物、目标读者
+  02-research/    ← 参考资料：真实案件、专业知识、类似作品
+  03-outline/     ← 大纲：分几章、每章写什么
+  04-drafts/      ← 初稿：v1、v2、v3... 每次修改都留一份
+  05-reviews/     ← 审校报告：AI 检查的结果、评分
+  06-deliverables/ ← 成品：最终版小说、发布包
 ```
 
-## Fanqie Safety
+**核心概念：核心诡计锁死**
 
-Use existing book slots by default. `create-book` is maintenance-only and must be confirmed by a human. Never commit account data, cookies, Chrome profiles, provider keys, `book_id`, or `volume_id`.
+在写初稿之前，你必须先确定：
+- 凶手是谁
+- 作案手法是什么
+- 关键线索有哪些
+- 读者什么时候知道真相
 
-**活写安全门**：所有写入番茄小说的命令（`upload`、`create-book`、`cleanup`）必须加 `--confirm-live` 参数才能执行。这是破坏性变更——旧版自动化脚本需更新，在人工确认后加上 `--confirm-live` 方可继续运行。
+这些设定一旦确定就被**锁死**，后面写初稿的时候不能随意改动。这样可以保证故事逻辑前后一致，不会出现"前面说凶手是A，后面突然变成B"的情况。
 
-`publish prep` creates a local manual-copy package under
-`06-deliverables/publish/{platform}-package/`. It does not write to Fanqie or
-any other platform.
+---
 
-## Fairness Check
+## 🛠️ 常用命令
 
-`case fair-check` validates that key clues recorded in
-`00-meta/truth-file.json` appear before the reveal in a draft. It writes
-`fairness-report.json` and `fairness-report.md` under `05-reviews/{version}/`.
-`BLOCKED` means the draft is not editor-approvable until the clue is planted
-earlier or the user approves changing the locked truth.
+### 案子管理
+```bash
+# 创建新案子
+node src/bin/wolf-runner.js case init 案子名称
 
-## Quality Score And Memory
+# 查看所有案子
+node src/bin/wolf-runner.js case list
 
-`case score` writes a 0-100 quality report under `05-reviews/{version}/` using
-the locked trick, fairness result, draft completeness, structured review
-artifacts, and publish readiness.
+# 检查案子是否合格（格式、文件、编码）
+node src/bin/wolf-runner.js case check 案子名称
 
-`memory init/check/show` manages optional static preferences at
-`~/.config/wolf/memory.json`. Memory is read-only preference context during case
-work; it cannot override `truth-file.json`.
+# 检查线索是否公平（关键线索是否在揭晓前出现过）
+node src/bin/wolf-runner.js case fair-check 案子名称 --version v1
 
-## Distribution Readiness
+# 给故事打分（0-100分）
+node src/bin/wolf-runner.js case score 案子名称 --version v1
+```
 
-The skill package includes `marketplace.json` as a distribution listing draft
-and `references/beta-acceptance.md` as the first external-user acceptance
-script. These are preparation artifacts only; they do not submit to any external
-marketplace.
+### 番茄小说发布
+```bash
+# 生成发布包（本地文件，不会真的发出去）
+node src/bin/wolf-runner.js publish prep 案子名称 --platform fanqie --version v1
+```
 
-`package.json.files` limits the npm package to the skill, runner, adapter, and
-operator docs. Internal research folders and full case drafts are not included
-in the distributable package.
+**⚠️ 注意**：真正上传到番茄小说需要额外的确认步骤，工具不会自动发布。
 
-Generated publish packages under `content/cases/*/06-deliverables/publish/`
-and `.omc/` research output are local runtime material and are ignored by git.
+---
+
+## 🔒 安全提醒（番茄小说相关）
+
+- **默认使用已有书籍**：不要频繁创建新书，`create-book` 仅用于维护，需要人工确认。
+- **活写安全门**：所有真正写入番茄小说的命令（上传章节、创建书籍、删除草稿）必须加 `--confirm-live` 参数。这是为了保护你的账号，防止误操作。
+- **不要泄露账号信息**：不要把 cookies、账号密码、book_id、volume_id 上传到 git。
+
+---
+
+## 🧠 个人偏好记忆
+
+工具可以记住你的写作偏好（比如你喜欢快节奏还是慢节奏、喜欢什么类型的诡计），保存在 `~/.config/wolf/memory.json` 里。每次开新案子时，工具会参考这些偏好。
+
+```bash
+# 创建偏好文件
+node src/bin/wolf-runner.js memory init
+
+# 检查偏好文件格式对不对
+node src/bin/wolf-runner.js memory check
+
+# 查看当前偏好
+node src/bin/wolf-runner.js memory show
+```
+
+---
+
+## 📦 项目结构说明
+
+| 文件夹 | 里面有什么 |
+|--------|-----------|
+| `.kit/` | 项目基本信息和版本号 |
+| `.plan/` | 产品规划文档（PRD、技术规格、检查清单） |
+| `.workflow/` | 使用说明 |
+| `src/` | 程序代码（你一般不用改这里） |
+| `content/cases/` | 你的案子都在这里 |
+| `ops/` | 打包好的技能文件 |
+
+---
+
+## 📝 发布说明
+
+- `package.json` 限制了发布包的内容，只包含技能文件、运行程序和使用文档。
+- 研究资料、完整草稿、临时文件不会被打包进去。
+- `content/cases/*/06-deliverables/publish/` 下的发布包和 `.omc/` 研究输出都是本地临时文件，不会被 git 跟踪。
+
+---
+
+**有问题？** 直接问 AI 助手 "怎么用这个工具写侦探小说" 就行。
