@@ -1,0 +1,19 @@
+{
+  "core_trick": {
+    "locked": true,
+    "approved_by": "test",
+    "approved_at": "2024-01-01",
+    "editor_explanation": "test",
+    "canonical_solution": "test",
+    "writer_constraints": [
+      "test"
+    ],
+    "change_policy": "test",
+    "lock_hash": "8a7092374aa301938622fddec16e2f82a32604a5b711663468a06b9accd129d9"
+  },
+  "clues": [],
+  "foreshadowing": [],
+  "timeline": [],
+  "key_props": [],
+  "updated_at": "2026-06-03T02:03:41.964Z"
+}

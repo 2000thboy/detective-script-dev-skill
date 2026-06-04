@@ -1,0 +1,17 @@
+{
+  "core_trick": {
+    "locked": true,
+    "approved_by": "unknown",
+    "approved_at": "2026-06-03T02:04:27.244Z",
+    "editor_explanation": "",
+    "canonical_solution": "",
+    "writer_constraints": [],
+    "change_policy": "User approval required before any core trick change",
+    "lock_hash": "4e38d7e6dcf4ad8537c5ded668e282f0d0c490a1c5c6b98a9009657e61bf1429"
+  },
+  "foreshadowing": [],
+  "clues": [],
+  "timeline": [],
+  "key_props": [],
+  "updated_at": "2026-06-03T02:04:27.244Z"
+}

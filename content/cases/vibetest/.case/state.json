@@ -1,0 +1,51 @@
+{
+  "case": "vibetest",
+  "status": "active",
+  "phase": "drafting",
+  "current_version": "v1",
+  "completed_nodes": [
+    "brief",
+    "trick",
+    "draft"
+  ],
+  "pending_gates": [
+    "review-start"
+  ],
+  "last_successful_version": null,
+  "rollback_count": 0,
+  "rollback_history": [],
+  "max_rollbacks": 3,
+  "circuit_breaker": {
+    "fused": false
+  },
+  "active_run": null,
+  "agent_runs": [],
+  "version_index": [
+    "v1"
+  ],
+  "archive_path": null,
+  "updated_at": "2026-06-03T02:04:31.300Z",
+  "node_history": [
+    {
+      "at": "2026-06-03T02:04:18.532Z",
+      "command": "brief-lock",
+      "node": "brief",
+      "owner": "unknown",
+      "next_gate": "trick-lock"
+    },
+    {
+      "at": "2026-06-03T02:04:27.244Z",
+      "command": "trick-lock",
+      "node": "trick",
+      "owner": "unknown",
+      "next_gate": "draft-start"
+    },
+    {
+      "at": "2026-06-03T02:04:31.300Z",
+      "command": "draft-start",
+      "node": "draft",
+      "owner": "unknown",
+      "next_gate": "review-start"
+    }
+  ]
+}

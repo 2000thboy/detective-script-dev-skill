@@ -1,0 +1,22 @@
+{
+  "case": "test-emoji-🎉",
+  "status": "active",
+  "phase": "init",
+  "current_version": "v1",
+  "completed_nodes": [],
+  "pending_gates": [],
+  "last_successful_version": null,
+  "rollback_count": 0,
+  "rollback_history": [],
+  "max_rollbacks": 3,
+  "circuit_breaker": {
+    "fused": false
+  },
+  "active_run": null,
+  "agent_runs": [],
+  "version_index": [
+    "v1"
+  ],
+  "archive_path": null,
+  "updated_at": "2026-06-03T02:03:51.916Z"
+}

@@ -1,0 +1,67 @@
+{
+  "case": "h4-case",
+  "status": "active",
+  "phase": "publish_ready",
+  "current_version": "v1",
+  "completed_nodes": [
+    "trick",
+    "draft",
+    "review",
+    "editor",
+    "publish_prep"
+  ],
+  "pending_gates": [
+    "human_live_publish_approval"
+  ],
+  "last_successful_version": null,
+  "rollback_count": 0,
+  "rollback_history": [],
+  "max_rollbacks": 3,
+  "circuit_breaker": {
+    "fused": false
+  },
+  "active_run": null,
+  "agent_runs": [],
+  "version_index": [
+    "v1"
+  ],
+  "archive_path": null,
+  "updated_at": "2026-06-03T02:03:47.995Z",
+  "node_history": [
+    {
+      "at": "2026-06-03T02:03:41.964Z",
+      "command": "trick-lock",
+      "node": "trick",
+      "owner": "unknown",
+      "next_gate": "draft-start"
+    },
+    {
+      "at": "2026-06-03T02:03:47.869Z",
+      "command": "draft-start",
+      "node": "draft",
+      "owner": "unknown",
+      "next_gate": "review-start"
+    },
+    {
+      "at": "2026-06-03T02:03:47.910Z",
+      "command": "review-start",
+      "node": "review",
+      "owner": "unknown",
+      "next_gate": "editor-judge"
+    },
+    {
+      "at": "2026-06-03T02:03:47.955Z",
+      "command": "editor-judge",
+      "node": "editor",
+      "owner": "unknown",
+      "next_gate": "publish-prep"
+    },
+    {
+      "at": "2026-06-03T02:03:47.995Z",
+      "command": "publish-prep",
+      "node": "publish_prep",
+      "owner": "unknown",
+      "next_gate": "human_live_publish_approval"
+    }
+  ]
+}
